@@ -1,0 +1,7 @@
+stellar:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "stellar.duckdb"
+      threads: 1

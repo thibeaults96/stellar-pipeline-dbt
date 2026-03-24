@@ -1,0 +1,263 @@
+id: 2
+title: "Something's Wrong with Kepler-7b"
+subtitle: "Write the tests. Never be blind again."
+character: "R0-B3RT"
+xp_reward: 180
+
+badge:
+  id: quality_guardian
+  emoji: "\U0001f6e1\ufe0f"
+  name: "Quality Guardian"
+  description: "Added tests to catch bad data before it breaks downstream models."
+  xp: 180
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+  - models/marts/fct_supply_report.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,loaded_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T06:00:00Z\n,K7B,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-02-28T23:00:00Z\nSHP-003,K7B,MRD-9,equipment,4500kg,2847-03-02T10:00:00Z,2847-03-04T08:00:00Z,DELIVERED,0,2847-03-04T06:00:00Z\n,K7B,MRD-9,fuel_cells,900kg,2847-03-03T14:00:00Z,,IN_TRANSIT,0,2847-03-03T15:00:00Z\nSHP-005,TAU-4,K7B,medical,340kg,2847-03-04T06:00:00Z,,IN_TRANSIT,0,2847-03-04T07:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-04T02:00:00Z\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql
+    -- Carried forward from Level 1.
+
+    with source as (
+
+        select * from {{ source('federation', 'raw_shipments') }}
+
+    ),
+
+    renamed as (
+
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status,
+            voss_flag
+
+        from source
+
+    )
+
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql
+    -- Carried forward from Level 1.
+
+    with shipments as (
+
+        select * from {{ ref('stg_shipments') }}
+
+    ),
+
+    planets as (
+
+        select * from {{ ref('stg_planets') }}
+
+    ),
+
+    routes as (
+
+        select
+            s.shipment_id,
+            s.cargo_type,
+            s.cargo_mass_kg,
+            s.status,
+            s.departed_at,
+            s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name,
+            origin.sector as origin_sector
+
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+
+    )
+
+    select * from routes
+
+  models/marts/fct_supply_report.sql: |
+    -- fct_supply_report.sql
+
+    with trade_routes as (
+
+        select * from {{ ref('fct_trade_routes') }}
+
+    )
+
+    select
+        origin_sector,
+        cargo_type,
+        count(*) as shipment_count,
+        sum(cargo_mass_kg) as total_mass_kg,
+        sum(case when status = 'delivered' then 1 else 0 end) as delivered_count
+
+    from trade_routes
+    group by 1, 2
+
+  models/sources/federation_sources.yml: |
+    version: 2
+
+    sources:
+      - name: federation
+        description: "Raw telemetry from Federation sensor arrays"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records from all registered vessels"
+            # This source needs monitoring. Check the objectives panel.
+            loaded_at_field: loaded_at
+            columns:
+              - name: shipment_id
+              - name: status
+
+          - name: raw_planets
+            description: "Planetary registry and resource data"
+
+  models/staging/_stg_shipments.yml: |
+    version: 2
+
+    models:
+      - name: stg_shipments
+        description: "Staged cargo shipment data from Federation sensor arrays"
+        columns:
+          - name: shipment_id
+            description: "Unique identifier for each shipment"
+            # This column is a primary key. Add a 'tests:' section here
+            # with not_null and unique tests. See the dbt docs for syntax.
+
+          - name: status
+            description: "Current status of the shipment"
+
+# ── Phase 1: Add tests on shipment_id ──
+# ── Phase 2: Configure freshness ──
+# ── Phase 3: Run tests and see them catch the bad data ──
+
+objectives:
+  - id: add_not_null_test
+    label: "Add a not_null test on shipment_id in _stg_shipments.yml"
+    hint: "Under the shipment_id column's tests list, add '- not_null'. This tells dbt to check that every row has a value."
+    check:
+      type: has_test
+      model_name: stg_shipments
+      column_name: shipment_id
+      test_type: not_null
+
+  - id: add_unique_test
+    label: "Add a unique test on shipment_id in _stg_shipments.yml"
+    hint: "Same spot, add '- unique'. This catches duplicate primary keys."
+    check:
+      type: has_test
+      model_name: stg_shipments
+      column_name: shipment_id
+      test_type: unique
+
+  - id: run_tests
+    label: "Run dbt test and see the tests catch the bad data"
+    hint: "Click 'dbt test'. The not_null test should fail because there are rows with NULL shipment_id. That's the whole point."
+    check:
+      type: tests_ran_with_failures
+
+  - id: configure_freshness
+    label: "Add freshness monitoring to raw_shipments in federation_sources.yml"
+    hint: "In federation_sources.yml under raw_shipments, add a freshness: block with warn_after: {count: 24, period: hour} and error_after: {count: 48, period: hour}. This tells dbt to flag when source data goes stale."
+    check:
+      type: has_freshness_config
+      source_name: federation
+      table_name: raw_shipments
+
+narrative_triggers:
+  # ── Level start: set the scene ──
+  - id: nt_start
+    event: LEVEL_START
+    narrative_key: alert
+    once: true
+
+  - id: nt_start_guide
+    event: LEVEL_START
+    narrative_key: intro_guide
+    once: true
+
+  # ── After first dbt run, point out the data problem ──
+  - id: nt_first_run
+    event: FIRST_RUN
+    narrative_key: data_problem
+    once: true
+
+  # ── Tests written, guide them to run ──
+  - id: nt_tests_written
+    event: OBJECTIVE_add_unique_test_COMPLETE
+    narrative_key: tests_written_guide
+    once: true
+
+  # ── Tests ran and caught failures ──
+  - id: nt_test_results
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: test_results_explain
+    once: true
+
+  # ── Guide freshness after tests are done ──
+  - id: nt_freshness_guide
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: freshness_guide
+    once: true
+
+  # ── Level complete ──
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+narrative_script:
+  alert:
+    id: alert
+    character: R0-B3RT
+    message: "Hey, we've got a problem. It's 03:00 and <highlight>fct_supply_report is producing bad numbers.</highlight> Three fleets are waiting on cargo manifests and the data doesn't add up. Something's wrong upstream. Let's figure it out."
+    priority: high
+
+  intro_guide:
+    id: intro_guide
+    character: R0-B3RT
+    message: "So the models all compile and run fine, that's not the issue. The problem is in the data itself. Click <highlight>raw_shipments</highlight> under SOURCE DATA and take a look. See anything off? Then open <highlight>_stg_shipments.yml</highlight>, that's where you'll add tests. The TODO comments show you the syntax."
+    priority: normal
+
+  data_problem:
+    id: data_problem
+    character: R0-B3RT
+    message: "See the output? Everything built successfully. But look at raw_shipments in the preview. <highlight>Two rows have no shipment_id.</highlight> That's supposed to be the primary key. Without tests on that column, dbt has no way of knowing the data is broken. It just passes the NULLs downstream into every model that depends on it."
+    priority: high
+
+  tests_written_guide:
+    id: tests_written_guide
+    character: R0-B3RT
+    message: "Good, you've got not_null and unique tests defined. Now you need to actually run them. Click <highlight>dbt test</highlight> in the terminal. The not_null test should fail because of those NULL rows. That's not a bad thing, it means your tests are working."
+    priority: normal
+
+  test_results_explain:
+    id: test_results_explain
+    character: R0-B3RT
+    message: "There it is. The tests caught the bad rows. Here's what matters: <highlight>the models still build, but now the problem is visible</highlight>. In production, a failing test can block a deploy or page someone. You didn't fix the data, that's the source team's problem. What you did is make sure nobody can miss it. That's the job."
+    priority: high
+
+  freshness_guide:
+    id: freshness_guide
+    character: R0-B3RT
+    message: "One more thing. Open <highlight>federation_sources.yml</highlight> and look at the raw_shipments source. There's no freshness monitoring on it. If the source data stops updating, nobody finds out until reports start looking wrong. Add a <highlight>freshness:</highlight> block with warn_after and error_after thresholds so dbt can flag stale data."
+    priority: normal
+
+  level_complete:
+    id: level_complete
+    character: R0-B3RT
+    message: "Supply fleets rerouted, crisis handled. You caught a data quality issue with tests instead of trying to patch the data yourself. And you set up freshness monitoring so this kind of thing gets flagged early next time. Nice work."
+    priority: high

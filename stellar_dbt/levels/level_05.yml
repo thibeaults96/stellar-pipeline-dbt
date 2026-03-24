@@ -1,0 +1,312 @@
+id: 5
+title: "The Clean Handoff"
+subtitle: "Build a macro. Close the investigation."
+character: "R0-B3RT"
+xp_reward: 250
+
+badge:
+  id: federation_analyst
+  emoji: "\U0001f31f"
+  name: "Federation Analyst"
+  description: "Completed the Stellar Pipeline training. Built macros, models, tests, docs, and incremental pipelines."
+  xp: 250
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,updated_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T14:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0,2847-03-03T08:00:00Z\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-03-04T00:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0,2847-03-04T10:00:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0,2847-03-04T22:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-05T00:00:00Z\nSHP-007,TAU-4,MRD-9,supplies,3100kg,2847-03-05T06:00:00Z,,IN_TRANSIT,0,2847-03-05T06:00:00Z\nSHP-008,MRD-9,NM-00,classified,1500kg,2847-03-05T12:00:00Z,,IN_TRANSIT,1,2847-03-05T12:00:00Z\nSHP-009,K7B,NM-00,humanitarian_aid,600kg,2847-03-06T02:00:00Z,,IN_TRANSIT,1,2847-03-06T02:00:00Z\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward)
+
+    with source as (
+        select * from {{ source('federation', 'raw_shipments') }}
+    ),
+    renamed as (
+        select shipment_id, origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id, cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status, voss_flag, updated_at
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at, s.voss_flag,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name,
+            dest.is_federation_member as dest_is_federation
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  macros/flag_suspicious.sql: |
+    -- flag_suspicious.sql
+    --
+    -- This is a MACRO file. Macros are reusable Jinja functions that you can
+    -- call from any model. They live in the macros/ folder.
+    --
+    -- Your job: create a macro called "flag_suspicious" that takes a column name
+    -- for the result and returns a CASE WHEN expression that flags suspicious
+    -- shipments.
+    --
+    -- A shipment is suspicious if ANY of these are true:
+    --   - voss_flag = 1
+    --   - dest_is_federation = false
+    --   - cargo_type = 'classified'
+    --
+    -- Macro syntax:
+    --   {% macro macro_name(parameter) %}
+    --     ... SQL that gets inserted where the macro is called ...
+    --   {% endmacro %}
+    --
+    -- Then in a model you call it with: {{ macro_name('column_name') }}
+    --
+    -- Check the objectives panel for specifics.
+
+  models/marts/fct_voss_investigation.sql: |
+    -- fct_voss_investigation.sql
+    --
+    -- Build an investigation model using your macro.
+    --
+    -- Steps:
+    --   1. Pull from fct_trade_routes using ref()
+    --   2. Call your flag_suspicious macro to add the is_suspicious column
+    --   3. Filter to only suspicious rows
+    --   4. Add a risk_level column: 'high' if cargo_type is 'classified', else 'medium'
+    --
+    -- Check the objectives panel for specifics.
+
+    select 1 as placeholder
+
+  models/sources/federation_sources.yml: |
+    version: 2
+
+    sources:
+      - name: federation
+        description: "Raw telemetry data from Federation sensor arrays"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records from all registered vessels"
+          - name: raw_planets
+            description: "Planetary registry and resource data"
+
+objectives:
+  # Phase 1: Create the macro
+  - id: create_macro
+    label: "Create a flag_suspicious macro in macros/flag_suspicious.sql"
+    hint: "Define the macro with: {% macro flag_suspicious(column_name) %} case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }} {% endmacro %}"
+    check:
+      type: file_contains
+      filename: macros/flag_suspicious.sql
+      pattern: "macro\\s+flag_suspicious"
+
+  - id: macro_has_case_when
+    label: "The macro should contain the CASE WHEN logic"
+    hint: "Inside the macro, write: case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }}"
+    check:
+      type: file_contains
+      filename: macros/flag_suspicious.sql
+      pattern: "case\\s+when[\\s\\S]*voss_flag[\\s\\S]*then\\s+1[\\s\\S]*else\\s+0[\\s\\S]*end"
+
+  # Phase 2: Build the investigation model
+  - id: ref_trade_routes
+    label: "Pull data from fct_trade_routes using ref()"
+    hint: "Start with: select * from {{ ref('fct_trade_routes') }}"
+    check:
+      type: has_ref_call
+      filename: models/marts/fct_voss_investigation.sql
+      target_model: fct_trade_routes
+
+  - id: use_macro
+    label: "Call the flag_suspicious macro in the investigation model"
+    hint: "In your SELECT, add: {{ flag_suspicious('is_suspicious') }}. This calls your macro and names the output column is_suspicious."
+    check:
+      type: file_contains_active_sql
+      filename: models/marts/fct_voss_investigation.sql
+      pattern: "flag_suspicious\\s*\\("
+
+  - id: add_risk_level
+    label: "Add a risk_level column: 'high' for classified cargo, 'medium' otherwise"
+    hint: "Add another CASE WHEN: case when cargo_type = 'classified' then 'high' else 'medium' end as risk_level"
+    check:
+      type: has_column_alias
+      filename: models/marts/fct_voss_investigation.sql
+      aliases: [risk_level]
+
+  - id: filter_suspicious
+    label: "Filter to only show suspicious rows (is_suspicious = 1)"
+    hint: "Add: where is_suspicious = 1. You may need to wrap your query in a CTE first."
+    check:
+      type: file_contains_active_sql
+      filename: models/marts/fct_voss_investigation.sql
+      pattern: "where[\\s\\S]*is_suspicious\\s*=\\s*1"
+
+  - id: all_green
+    label: "Run dbt and all models pass"
+    hint: "Click 'dbt run' to build everything."
+    check:
+      type: all_models_pass
+
+narrative_triggers:
+  - id: nt_start
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_start_guide
+    event: LEVEL_START
+    narrative_key: macro_guide
+    once: true
+
+  - id: nt_first_run
+    event: FIRST_RUN
+    narrative_key: first_run
+    once: true
+
+  - id: nt_macro_done
+    event: OBJECTIVE_macro_has_case_when_COMPLETE
+    narrative_key: macro_done
+    once: true
+
+  - id: nt_ref_done
+    event: OBJECTIVE_ref_trade_routes_COMPLETE
+    narrative_key: use_macro_guide
+    once: true
+
+  - id: nt_macro_used
+    event: OBJECTIVE_use_macro_COMPLETE
+    narrative_key: risk_level_guide
+    once: true
+
+  - id: nt_filter_done
+    event: OBJECTIVE_filter_suspicious_COMPLETE
+    narrative_key: almost_there
+    once: true
+
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+  # ── Epilogue: resolves the VOSS story ──
+  - id: nt_epilogue_1
+    event: LEVEL_COMPLETE
+    narrative_key: epilogue_1
+    once: true
+
+  - id: nt_epilogue_2
+    event: LEVEL_COMPLETE
+    narrative_key: epilogue_2
+    once: true
+
+  - id: nt_epilogue_3
+    event: LEVEL_COMPLETE
+    narrative_key: epilogue_3
+    once: true
+
+  - id: nt_epilogue_voss
+    event: LEVEL_COMPLETE
+    narrative_key: epilogue_voss
+    once: true
+
+  - id: nt_epilogue_final
+    event: LEVEL_COMPLETE
+    narrative_key: epilogue_final
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: R0-B3RT
+    message: "Alright, last one. I've been looking at those VOSS-flagged shipments and something is definitely going on. I need you to build an investigation model, but not with one-off logic. Build a <highlight>macro</highlight> that flags suspicious shipments, something we can reuse across the whole fleet."
+    priority: high
+
+  macro_guide:
+    id: macro_guide
+    character: R0-B3RT
+    message: "Open <highlight>macros/flag_suspicious.sql</highlight>. Macros are reusable Jinja functions. You define them once, then call them from any model. The comments in the file explain the syntax. Start by defining the macro with the CASE WHEN logic, then we'll use it in the investigation model."
+    priority: normal
+
+  first_run:
+    id: first_run
+    character: R0-B3RT
+    message: "Models built fine. Now check fct_trade_routes in the preview. You'll see voss_flag, destination names, and whether the destination is a Federation member. Those are the fields your macro needs to check."
+    priority: normal
+
+  macro_done:
+    id: macro_done
+    character: R0-B3RT
+    message: "Macro looks good. Now open <highlight>fct_voss_investigation.sql</highlight> and build the investigation model. Start by pulling from fct_trade_routes with ref(), then call your macro with <highlight>{{ flag_suspicious('is_suspicious') }}</highlight> in the SELECT."
+    priority: normal
+
+  use_macro_guide:
+    id: use_macro_guide
+    character: R0-B3RT
+    message: "ref() is wired up. Now call your macro in the SELECT list. The syntax is: {{ flag_suspicious('is_suspicious') }}. That'll expand into the CASE WHEN you wrote and name the result column is_suspicious."
+    priority: normal
+
+  risk_level_guide:
+    id: risk_level_guide
+    character: R0-B3RT
+    message: "Flag is working. Now add a risk level too. Add a column called <highlight>risk_level</highlight>: 'high' if the cargo_type is 'classified', 'medium' for everything else. Then filter the whole thing to only show rows where is_suspicious = 1."
+    priority: normal
+
+  almost_there:
+    id: almost_there
+    character: R0-B3RT
+    message: "Filter's in. Run it and let's see what turns up."
+    priority: high
+
+  level_complete:
+    id: level_complete
+    character: R0-B3RT
+    message: "Four shipments flagged. All going to Null Meridian. Two with classified cargo, two labeled humanitarian aid that nobody authorized. Every single one has voss_flag = 1. I'm forwarding this to Federation Command."
+    priority: high
+
+  epilogue_1:
+    id: epilogue_1
+    character: R0-B3RT
+    message: "Okay, I just got a response back from Command. They pulled the shipping manifests. Those humanitarian aid shipments to Null Meridian? There's no aid program for that planet. It's not even in the Federation. Someone inside logistics command was routing cargo there and burying it in the data."
+    priority: low
+
+  epilogue_2:
+    id: epilogue_2
+    character: R0-B3RT
+    message: "They also figured out why VOSS disappeared. He flagged these exact shipments six months ago in an internal report. Two days later his access was revoked and he was reassigned to a listening post in the outer rim. No explanation. The report was deleted from the system. But he left something behind."
+    priority: low
+
+  epilogue_3:
+    id: epilogue_3
+    character: R0-B3RT
+    message: "The voss_flag column. It was never part of the original schema. VOSS added it to the source data before he was removed. A dead drop, hidden in plain sight. He was betting that the next analyst would notice a column that shouldn't exist, look at the data, and ask why certain shipments were flagged. <highlight>That analyst was you.</highlight>"
+    priority: low
+
+  epilogue_voss:
+    id: epilogue_voss
+    character: VOSS
+    message: "...I wasn't sure anyone would look that closely. Most people just build the pipeline and move on. You actually read the data. <highlight>That's the whole job. The pipeline isn't plumbing. It's how the truth gets from the source to the people who need it.</highlight> Thanks for not looking away, AE-7."
+    priority: low
+
+  epilogue_final:
+    id: epilogue_final
+    character: R0-B3RT
+    message: "For the record: you built a dbt project from scratch. Staging, marts, tests, documentation, incremental models, macros, and an investigation layer that cracked open a smuggling operation. <highlight>Not bad for a recruit.</highlight> I've closed out your training file. You're certified. Go build something."
+    priority: low

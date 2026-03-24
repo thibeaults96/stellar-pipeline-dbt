@@ -1,0 +1,6 @@
+planet_id,planet_name,sector,population,is_federation_member
+K7B,Kepler-7b,outer_rim,4200000,true
+MRD-9,Meridian-9,core,12000000,true
+TAU-4,Tau Ceti IV,mid_rim,7800000,true
+ALF-C,Alpha Centauri Prime,core,18000000,true
+NM-00,Null Meridian,uncharted,,false

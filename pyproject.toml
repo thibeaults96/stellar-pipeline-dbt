@@ -1,0 +1,27 @@
+[project]
+name = "stellar-dbt"
+version = "0.1.0"
+description = "Learn dbt through a sci-fi narrative — powered by real dbt + DuckDB"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "typer[all]>=0.9.0",
+    "rich>=13.0",
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "duckdb>=0.10.0",
+    "dbt-core>=1.7.0",
+    "dbt-duckdb>=1.7.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+]
+
+[project.scripts]
+stellar = "stellar_dbt.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["stellar_dbt*", "backend*"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

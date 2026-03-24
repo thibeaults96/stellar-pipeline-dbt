@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --void: #080b14;
+  --deep: #0d1220;
+  --panel: #111827;
+  --panel-border: #1e2d45;
+  --accent: #00d4ff;
+  --green: #00ff9d;
+  --amber: #ffb800;
+  --red: #ff3d5a;
+  --purple: #a855f7;
+  --text: #c8d8e8;
+  --text-dim: #4a6070;
+  --text-bright: #e8f4ff;
+}
+
+body {
+  background: var(--void);
+  color: var(--text);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--void);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--panel-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+/* Glow effects */
+.glow-accent {
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}

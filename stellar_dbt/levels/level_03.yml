@@ -1,0 +1,235 @@
+id: 3
+title: "The Smuggler's Ledger"
+subtitle: "Document your models. Trust nothing."
+character: "R0-B3RT"
+xp_reward: 200
+
+badge:
+  id: data_librarian
+  emoji: "\U0001f4d6"
+  name: "Data Librarian"
+  description: "Documented your models and added accepted_values tests to lock down data quality."
+  xp: 200
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0\nSHP-007,K7B,NM-00,UNKNOWN_TYPE,500kg,2847-03-04T10:00:00Z,,IN_TRANSIT,1\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward)
+
+    with source as (
+        select * from {{ source('federation', 'raw_shipments') }}
+    ),
+    renamed as (
+        select shipment_id, origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id, cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status, voss_flag
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  models/sources/federation_sources.yml: |
+    version: 2
+
+    sources:
+      - name: federation
+        description: "Raw telemetry data from Federation sensor arrays"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records from all registered vessels"
+          - name: raw_planets
+            description: "Planetary registry and resource data"
+
+  models/staging/_stg_shipments.yml: |
+    version: 2
+
+    models:
+      - name: stg_shipments
+        # This model needs a description. What does it do?
+        columns:
+          - name: shipment_id
+            # What is this column? Add a description.
+          - name: cargo_type
+            # What values are valid here? Check the source data.
+          - name: status
+            # What are the possible status values?
+
+  models/marts/_fct_trade_routes.yml: |
+    version: 2
+
+    models:
+      - name: fct_trade_routes
+        # What does this mart model represent?
+        columns:
+          - name: shipment_id
+          - name: origin_planet_name
+          - name: destination_planet_name
+
+objectives:
+  # Phase 1: Document the staging model
+  - id: describe_stg_model
+    label: "Add a description to the stg_shipments model"
+    hint: "In _stg_shipments.yml, add description: 'Cleaned shipment data...' (or similar) under the model name."
+    check:
+      type: file_contains
+      filename: models/staging/_stg_shipments.yml
+      pattern: "name:\\s*stg_shipments[\\s\\S]*?description:\\s*[\"'].{10,}"
+
+  - id: describe_shipment_id
+    label: "Add a description to the shipment_id column"
+    hint: "Under the shipment_id column entry, add description: 'Unique identifier for each shipment' or similar."
+    check:
+      type: file_contains
+      filename: models/staging/_stg_shipments.yml
+      pattern: "name:\\s*shipment_id[\\s\\S]*?description:\\s*[\"'].{5,}"
+
+  # Phase 2: Add accepted_values test
+  - id: add_status_accepted_values
+    label: "Add an accepted_values test on the status column"
+    hint: "Under the status column in _stg_shipments.yml, add a tests section with accepted_values and a values list like ['delivered', 'in_transit']."
+    check:
+      type: file_contains
+      filename: models/staging/_stg_shipments.yml
+      pattern: "name:\\s*status[\\s\\S]*?tests:[\\s\\S]*?accepted_values"
+
+  - id: add_cargo_type_accepted_values
+    label: "Add an accepted_values test on cargo_type"
+    hint: "Check the source data for what cargo types exist. Add accepted_values with those types. The new shipment SHP-007 has an UNKNOWN_TYPE that should fail the test."
+    check:
+      type: file_contains
+      filename: models/staging/_stg_shipments.yml
+      pattern: "name:\\s*cargo_type[\\s\\S]*?tests:[\\s\\S]*?accepted_values"
+
+  # Phase 3: Document the mart
+  - id: describe_mart_model
+    label: "Add a description to the fct_trade_routes model"
+    hint: "In _fct_trade_routes.yml, add a description explaining what the mart does."
+    check:
+      type: file_contains
+      filename: models/marts/_fct_trade_routes.yml
+      pattern: "name:\\s*fct_trade_routes[\\s\\S]*?description:\\s*[\"'].{10,}"
+
+  # Phase 4: Run tests
+  - id: run_tests
+    label: "Run dbt test and see accepted_values catch the bad cargo_type"
+    hint: "Click 'dbt test'. The accepted_values test on cargo_type should fail because of the UNKNOWN_TYPE value in the data."
+    check:
+      type: tests_ran_with_failures
+
+narrative_triggers:
+  - id: nt_start
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_start_guide
+    event: LEVEL_START
+    narrative_key: doc_guide
+    once: true
+
+  - id: nt_first_run
+    event: FIRST_RUN
+    narrative_key: first_run_note
+    once: true
+
+  - id: nt_stg_described
+    event: OBJECTIVE_describe_shipment_id_COMPLETE
+    narrative_key: good_docs
+    once: true
+
+  - id: nt_accepted_values_guide
+    event: OBJECTIVE_describe_shipment_id_COMPLETE
+    narrative_key: accepted_values_guide
+    once: true
+
+  - id: nt_mart_guide
+    event: OBJECTIVE_add_cargo_type_accepted_values_COMPLETE
+    narrative_key: mart_doc_guide
+    once: true
+
+  - id: nt_test_results
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: test_results
+    once: true
+
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: R0-B3RT
+    message: "Alright, the pipeline works but nobody can tell what anything means. There's no documentation, no descriptions, and there are some cargo types showing up that shouldn't exist. We need to lock this down."
+    priority: high
+
+  doc_guide:
+    id: doc_guide
+    character: R0-B3RT
+    message: "Open <highlight>_stg_shipments.yml</highlight>. Right now the model and columns have no descriptions. In a real project, descriptions show up in dbt docs and help anyone reading the code understand what each model and column is for. Start by adding a description to the model itself, then to the key columns."
+    priority: normal
+
+  first_run_note:
+    id: first_run_note
+    character: R0-B3RT
+    message: "Models built fine. But take a look at the data preview for stg_shipments. See that row with cargo_type 'unknown_type'? That's not a valid cargo type. Descriptions help people understand the data, but <highlight>accepted_values tests</highlight> actually enforce what's allowed."
+    priority: normal
+
+  good_docs:
+    id: good_docs
+    character: R0-B3RT
+    message: "Nice, descriptions are in. In dbt, these show up when you run <highlight>dbt docs generate</highlight>. Anyone browsing the project can see what each model and column does without reading the SQL. Now let's add some tests that actually enforce data quality."
+    priority: normal
+
+  accepted_values_guide:
+    id: accepted_values_guide
+    character: R0-B3RT
+    message: "Time for <highlight>accepted_values</highlight> tests. These check that a column only contains values from a specific list. In _stg_shipments.yml, add a tests section under the status column with accepted_values and the valid values. Do the same for cargo_type. Check the source data preview to see what values exist."
+    priority: normal
+
+  mart_doc_guide:
+    id: mart_doc_guide
+    character: R0-B3RT
+    message: "Tests are set up on staging. Now document the mart too. Open <highlight>_fct_trade_routes.yml</highlight> and add a description. Analysts look at marts more than staging models, so this one matters."
+    priority: normal
+
+  test_results:
+    id: test_results
+    character: R0-B3RT
+    message: "The accepted_values test caught that unknown cargo type. That shipment SHP-007 with 'unknown_type' is flagged. Interesting that it's also headed to Null Meridian with voss_flag set to 1. Starting to see a pattern with these flagged shipments."
+    priority: high
+
+  level_complete:
+    id: level_complete
+    character: R0-B3RT
+    message: "Documentation and tests are in place. Anyone new to this project can now see what each model does, what columns mean, and what values are valid. That's the difference between a pipeline that works and one that's actually maintainable. Those VOSS-flagged shipments keep coming up though. Something's going on there."
+    priority: high
