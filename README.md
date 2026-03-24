@@ -30,9 +30,7 @@ Each level teaches a core dbt concept through hands-on objectives. You edit `.sq
 
 ## Quick Start (GitHub Codespaces — no install)
 
-Click the button below to open in a browser-based dev environment. Everything is pre-installed.
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/yourusername/stellar-pipeline)
+From the repo page on GitHub, click **Code → Codespaces → Create codespace on main**. This runs on your own GitHub account, no local install needed.
 
 Once it's ready, run:
 ```bash
