@@ -1,10 +1,12 @@
 'use client'
+import { useState } from 'react'
 import type { Objective } from '@/hooks/useGameApi'
 
 export default function ObjectivePanel({ objectives, newlyCompleted }: {
   objectives: Objective[]; newlyCompleted: string[]
 }) {
   const firstIncomplete = objectives.findIndex(o => !o.passed)
+  const [showHint, setShowHint] = useState<string | null>(null)
 
   return (
     <div className="p-2">
@@ -13,6 +15,7 @@ export default function ObjectivePanel({ objectives, newlyCompleted }: {
         {objectives.map((obj, i) => {
           const isCurrent = i === firstIncomplete
           const isNew = newlyCompleted.includes(obj.id)
+          const hintVisible = showHint === obj.id
           return (
             <div key={obj.id} className={`px-2 py-1.5 rounded text-sm font-exo
               ${obj.passed ? 'opacity-50' : ''} ${isCurrent ? 'bg-accent-dim' : ''}
@@ -26,9 +29,23 @@ export default function ObjectivePanel({ objectives, newlyCompleted }: {
                   {obj.passed ? '✓' : isCurrent ? '▸' : ''}
                 </span>
                 <span className={`flex-1 ${obj.passed ? 'line-through text-stellar-text-dim' : ''}`}>{obj.label}</span>
+                {!obj.passed && obj.hint && (
+                  <button
+                    onClick={() => setShowHint(hintVisible ? null : obj.id)}
+                    className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono-tech transition-colors ${
+                      hintVisible
+                        ? 'bg-stellar-amber/20 text-stellar-amber'
+                        : 'text-stellar-text-dim hover:text-stellar-amber border border-panel-border hover:border-stellar-amber/40'
+                    }`}
+                  >
+                    hint
+                  </button>
+                )}
               </div>
-              {!obj.passed && obj.reason && (
-                <div className="mt-1 ml-6 text-xs text-stellar-amber font-mono-tech leading-relaxed">{obj.reason}</div>
+              {hintVisible && obj.hint && (
+                <div className="mt-1 ml-6 text-xs text-stellar-amber font-mono-tech leading-relaxed">
+                  {obj.hint}
+                </div>
               )}
             </div>
           )

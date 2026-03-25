@@ -196,7 +196,7 @@ class GameEngine:
         """Show objectives without evaluating — only previously completed ones show as passed."""
         completed = set(state.completed_objectives.get(level.id, []))
         return [
-            (obj, obj.id in completed, None if obj.id in completed else "Click 'dbt run' or press Cmd+Enter to check objectives.")
+            (obj, obj.id in completed, None)
             for obj in level.objectives
         ]
 

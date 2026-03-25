@@ -17,29 +17,26 @@ function renderMsg(msg: string) {
 
 export default function NarrativePanel({ narratives }: { narratives: NarrativeEvent[] }) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  // Track where the "new" batch starts so we can highlight it
-  const batchStartRef = useRef(0)
   const prevLenRef = useRef(0)
+  const batchStartRef = useRef(0)
 
   useEffect(() => {
     const prev = prevLenRef.current
     const curr = narratives.length
 
     if (curr > prev) {
-      // New messages arrived — mark where the new batch starts
       batchStartRef.current = prev
     } else if (curr < prev) {
-      // Level reset
       batchStartRef.current = 0
     }
 
     prevLenRef.current = curr
   }, [narratives.length])
 
-  // Auto-scroll to bottom on new messages
+  // Scroll to top when new messages arrive (newest are at top)
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      scrollRef.current.scrollTop = 0
     }
   }, [narratives.length])
 
@@ -55,6 +52,8 @@ export default function NarrativePanel({ narratives }: { narratives: NarrativeEv
   }
 
   const batchStart = batchStartRef.current
+  // Reverse: newest messages first
+  const reversed = [...narratives].reverse()
 
   return (
     <div className="flex flex-col border-t border-panel-border max-h-[200px]">
@@ -62,13 +61,14 @@ export default function NarrativePanel({ narratives }: { narratives: NarrativeEv
         COMMS
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {narratives.map((event, i) => {
+        {reversed.map((event, ri) => {
+          const originalIndex = narratives.length - 1 - ri
           const color = CHARACTER_COLORS[event.character] ?? '#c8d8e8'
-          const isNew = i >= batchStart
+          const isNew = originalIndex >= batchStart
 
           return (
             <div
-              key={`${event.id}-${i}`}
+              key={`${event.id}-${originalIndex}`}
               className={`px-3 py-2.5 border-b border-panel-border/30 ${
                 isNew ? 'animate-fade-in' : 'opacity-50'
               }`}
