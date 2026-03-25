@@ -101,7 +101,7 @@ objectives:
     check:
       type: file_contains
       filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*stg_shipments[\\s\\S]*?description:\\s*[\"'].{10,}"
+      pattern: "name:\\s*stg_shipments[\\s\\S]*?description:\\s*[\"'].{3,}"
 
   - id: describe_shipment_id
     label: "Add a description to the shipment_id column"
@@ -135,7 +135,7 @@ objectives:
     check:
       type: file_contains
       filename: models/marts/_fct_trade_routes.yml
-      pattern: "name:\\s*fct_trade_routes[\\s\\S]*?description:\\s*[\"'].{10,}"
+      pattern: "name:\\s*fct_trade_routes[\\s\\S]*?description:\\s*[\"'].{3,}"
 
   # Phase 4: Run tests
   - id: run_tests

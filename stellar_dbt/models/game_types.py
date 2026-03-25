@@ -62,12 +62,32 @@ class DuckDBColumnExists(BaseModel):
     column: str
     schema_name: str = "main"
 
+class DuckDBColumnsExist(BaseModel):
+    """Check that specific columns exist in a model's output with optional type checking."""
+    type: Literal["duckdb_columns_exist"] = "duckdb_columns_exist"
+    table: str
+    columns: list[str]
+    types: dict[str, str] = {}  # column_name -> expected type (e.g. "INTEGER", "TIMESTAMP")
+
+class DuckDBColumnValuesCheck(BaseModel):
+    """Check that column values match a condition (e.g. all lowercase, all equal to X)."""
+    type: Literal["duckdb_column_values"] = "duckdb_column_values"
+    table: str
+    query: str  # SQL condition that should return 0 rows (no violations)
+
+class DuckDBRowCount(BaseModel):
+    """Check that a model has rows and optionally that all rows match a condition."""
+    type: Literal["duckdb_row_count"] = "duckdb_row_count"
+    table: str
+    min_rows: int = 1
+    where: str = ""  # Optional WHERE clause — all rows must match
+
 
 ObjectiveCheck = Union[
     HasColumnAlias, HasRefCall, FileContainsActiveSql, FileContains,
     NoHardcodedRefs, HasTest, HasFreshnessConfig,
     ArtifactAllModelsPass, ArtifactModelPasses, ArtifactTestRanWithFailures,
-    DuckDBColumnExists,
+    DuckDBColumnExists, DuckDBColumnsExist, DuckDBColumnValuesCheck, DuckDBRowCount,
 ]
 
 

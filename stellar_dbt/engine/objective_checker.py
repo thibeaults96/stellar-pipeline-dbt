@@ -182,6 +182,72 @@ def _check(c: ObjectiveCheck) -> CheckResult:
         except Exception as e:
             return _fail(f"Could not query database: {e}")
 
+    if c.type == "duckdb_columns_exist":
+        if not DB_PATH.exists():
+            return _fail("No database yet. Run 'dbt run' first.")
+        try:
+            conn = duckdb.connect(str(DB_PATH), read_only=True)
+            # Check if table exists
+            exists = conn.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = ? AND table_schema = 'main'",
+                [c.table],
+            ).fetchone()
+            if not exists:
+                conn.close()
+                return _fail(f"Model '{c.table}' not found. Run 'dbt run' to build it.")
+            # Get actual columns and types
+            actual = conn.execute(
+                "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ? AND table_schema = 'main'",
+                [c.table],
+            ).fetchall()
+            conn.close()
+            actual_cols = {row[0].lower(): row[1].upper() for row in actual}
+            missing = [col for col in c.columns if col.lower() not in actual_cols]
+            if missing:
+                found = list(actual_cols.keys())
+                return _fail(f"Missing column(s) in {c.table}: {', '.join(missing)}. Found: {', '.join(found)}")
+            # Check types if specified
+            for col, expected_type in c.types.items():
+                actual_type = actual_cols.get(col.lower(), "")
+                if expected_type.upper() not in actual_type:
+                    return _fail(f"Column '{col}' in {c.table} has type {actual_type}, expected {expected_type}.")
+            return _ok()
+        except Exception as e:
+            return _fail(f"Could not query database: {e}")
+
+    if c.type == "duckdb_column_values":
+        if not DB_PATH.exists():
+            return _fail("No database yet. Run 'dbt run' first.")
+        try:
+            conn = duckdb.connect(str(DB_PATH), read_only=True)
+            violations = conn.execute(c.query).fetchall()
+            conn.close()
+            if len(violations) > 0:
+                return _fail(f"Found {len(violations)} row(s) that don't match in {c.table}. Check the data preview.")
+            return _ok()
+        except Exception as e:
+            return _fail(f"Query failed: {e}")
+
+    if c.type == "duckdb_row_count":
+        if not DB_PATH.exists():
+            return _fail("No database yet. Run 'dbt run' first.")
+        try:
+            conn = duckdb.connect(str(DB_PATH), read_only=True)
+            if c.where:
+                count = conn.execute(f'SELECT count(*) FROM main."{c.table}" WHERE {c.where}').fetchone()[0]
+                total = conn.execute(f'SELECT count(*) FROM main."{c.table}"').fetchone()[0]
+            else:
+                count = conn.execute(f'SELECT count(*) FROM main."{c.table}"').fetchone()[0]
+                total = count
+            conn.close()
+            if count < c.min_rows:
+                if c.where:
+                    return _fail(f"Expected at least {c.min_rows} row(s) matching condition in {c.table}, got {count} out of {total}.")
+                return _fail(f"Expected at least {c.min_rows} row(s) in {c.table}, got {count}.")
+            return _ok()
+        except Exception as e:
+            return _fail(f"Query failed: {e}")
+
     return _fail(f"Unknown check type: {c.type}")
 
 

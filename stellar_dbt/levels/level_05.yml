@@ -147,17 +147,18 @@ objectives:
     label: "Add a risk_level column: 'high' for classified cargo, 'medium' otherwise"
     hint: "Add another CASE WHEN: case when cargo_type = 'classified' then 'high' else 'medium' end as risk_level"
     check:
-      type: has_column_alias
-      filename: models/marts/fct_voss_investigation.sql
-      aliases: [risk_level]
+      type: duckdb_columns_exist
+      table: fct_voss_investigation
+      columns: [risk_level, is_suspicious]
 
   - id: filter_suspicious
     label: "Filter to only show suspicious rows (is_suspicious = 1)"
     hint: "Add: where is_suspicious = 1. You may need to wrap your query in a CTE first."
     check:
-      type: file_contains_active_sql
-      filename: models/marts/fct_voss_investigation.sql
-      pattern: "where[\\s\\S]*is_suspicious\\s*=\\s*1"
+      type: duckdb_row_count
+      table: fct_voss_investigation
+      min_rows: 1
+      where: "is_suspicious = 1"
 
   - id: all_green
     label: "Run dbt and all models pass"

@@ -85,33 +85,38 @@ objectives:
     label: "Rename origin_planet → origin_planet_id and dest_planet → destination_planet_id"
     hint: "Use the AS keyword: origin_planet as origin_planet_id. Renaming adds clarity — '_id' signals this is a foreign key."
     check:
-      type: has_column_alias
-      filename: models/staging/stg_shipments.sql
-      aliases: [origin_planet_id, destination_planet_id]
+      type: duckdb_columns_exist
+      table: stg_shipments
+      columns: [origin_planet_id, destination_planet_id]
 
   - id: cast_timestamps
     label: "Cast departed_at and arrived_at as timestamps"
     hint: "Use cast(departed_at as timestamp) as departed_at. Do the same for arrived_at."
     check:
-      type: file_contains_active_sql
-      filename: models/staging/stg_shipments.sql
-      pattern: "cast\\s*\\(\\s*departed_at\\s+as\\s+timestamp\\s*\\)[\\s\\S]*cast\\s*\\(\\s*arrived_at\\s+as\\s+timestamp\\s*\\)"
+      type: duckdb_columns_exist
+      table: stg_shipments
+      columns: [departed_at, arrived_at]
+      types:
+        departed_at: TIMESTAMP
+        arrived_at: TIMESTAMP
 
   - id: cast_cargo_mass
     label: "Clean cargo_mass → cargo_mass_kg as an integer (strip the 'kg' suffix first)"
     hint: "The raw values look like '1200kg'. Use replace(cargo_mass, 'kg', '') to strip the suffix, then cast to integer, then alias as cargo_mass_kg."
     check:
-      type: file_contains_active_sql
-      filename: models/staging/stg_shipments.sql
-      pattern: "replace\\s*\\(\\s*cargo_mass\\s*,\\s*'kg'\\s*,\\s*''\\s*\\)[\\s\\S]*as\\s+cargo_mass_kg"
+      type: duckdb_columns_exist
+      table: stg_shipments
+      columns: [cargo_mass_kg]
+      types:
+        cargo_mass_kg: INTEGER
 
   - id: normalize_status
     label: "Lowercase status values → status (e.g. 'DELIVERED' becomes 'delivered')"
     hint: "Use lower(status) as status."
     check:
-      type: file_contains_active_sql
-      filename: models/staging/stg_shipments.sql
-      pattern: "lower\\s*\\(\\s*status\\s*\\)"
+      type: duckdb_column_values
+      table: stg_shipments
+      query: "SELECT * FROM main.stg_shipments WHERE status != lower(status)"
 
   # ── Phase 2: Build the mart with ref() ──
   - id: ref_shipments_in_mart
@@ -131,20 +136,20 @@ objectives:
       target_model: stg_planets
 
   - id: join_models
-    label: "Join shipments to planets — include origin_planet_name and destination_planet_name"
-    hint: "Join stg_planets twice: once for origin (on origin_planet_id = planet_id) and once for destination. Alias them as origin_planet_name and destination_planet_name."
+    label: "Join shipments to planets — include origin_planet_name in the output"
+    hint: "Join stg_planets to get the planet name for each shipment's origin. Use: left join stg_planets origin on origin_planet_id = planet_id, then select origin.planet_name as origin_planet_name."
     check:
-      type: has_column_alias
-      filename: models/marts/fct_trade_routes.sql
-      aliases: [origin_planet_name, destination_planet_name]
+      type: duckdb_columns_exist
+      table: fct_trade_routes
+      columns: [origin_planet_name]
 
   - id: add_aggregation
     label: "Add a shipment_count and total_mass_kg aggregation grouped by origin_planet_name"
     hint: "Use count(*) as shipment_count and sum(cargo_mass_kg) as total_mass_kg with a GROUP BY on origin_planet_name. You can do this in a final CTE or a separate query block."
     check:
-      type: file_contains_active_sql
-      filename: models/marts/fct_trade_routes.sql
-      pattern: "count\\s*\\(\\s*\\*\\s*\\)[\\s\\S]*as\\s+shipment_count[\\s\\S]*sum\\s*\\([\\s\\S]*cargo_mass_kg[\\s\\S]*\\)[\\s\\S]*as\\s+total_mass_kg"
+      type: duckdb_columns_exist
+      table: fct_trade_routes
+      columns: [origin_planet_name, shipment_count, total_mass_kg]
 
   - id: no_hardcoded_refs
     label: "No hardcoded table references in the mart"
