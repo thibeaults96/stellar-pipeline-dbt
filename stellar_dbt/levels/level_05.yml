@@ -67,6 +67,7 @@ initial_files:
     #   - name: what to call the snapshot table
     #   - relation: which model or source to snapshot (using ref() or source())
     #   - config: how to detect changes
+    # See dbt docs for syntax.
     #
     # The 'timestamp' strategy compares the updated_at column to detect changes.
     # The 'unique_key' tells dbt which column identifies each row.

@@ -63,6 +63,7 @@ initial_files:
     --
     -- The objectives panel and comms will walk you through incremental models.
     -- Key ideas: config block, unique key, and a filter for new rows only.
+    -- See dbt docs for syntax.
     --
     -- The updated_at column in stg_shipments tracks when each row last changed.
     -- Use it to filter for new/updated records.

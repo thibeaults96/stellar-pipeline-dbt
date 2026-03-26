@@ -24,7 +24,8 @@ Each level teaches a core dbt concept through hands-on objectives. You edit `.sq
 | 2 | Something's Wrong with Kepler-7b | dbt tests (`not_null`, `unique`), source freshness |
 | 3 | The Smuggler's Ledger | Model documentation, `accepted_values` tests |
 | 4 | The Refresh Crisis | Incremental models, `unique_key`, `is_incremental()` |
-| 5 | The Clean Handoff | CASE WHEN logic, investigation queries |
+| 5 | The Time Ledger | Snapshot models, `relation`, `timestamp`, `unique_key` |
+| 6 | The Clean Handoff | CASE WHEN logic, investigation queries |
 
 ---
 
@@ -110,24 +111,6 @@ lsof -ti:3000 | xargs kill -9
 
 Then run `./dev.sh` again.
 
-### "Command not found: stellar"
-
-If using uv, prefix with `uv run`:
-```bash
-uv run stellar start 1
-```
-
-If using pip, activate the venv:
-```bash
-source .venv/bin/activate
-```
-
-If that doesn't work, re-run setup:
-
-```bash
-bash setup.sh
-```
-
 ### Frontend shows "Connecting to server..."
 
 The backend isn't running. Make sure `./dev.sh` is running in a terminal. You should see both `[api]` and `[web]` lines in the output.
@@ -146,64 +129,6 @@ rm -rf frontend/.next
 ```
 
 ---
-
-## CLI Mode
-
-If you prefer using your own code editor (VS Code, vim, etc.) instead of the browser UI:
-
-```bash
-uv run stellar start 1   # Start Level 1
-# Edit files in dbt_project/models/ with your editor
-uv run stellar run       # Run dbt and check objectives
-uv run stellar test      # Run dbt tests
-stellar status           # View progress and objectives
-stellar hint             # Get hints for current objectives
-stellar hint rename_columns  # Get hint for a specific objective
-stellar reset            # Restart current level
-stellar levels           # List all levels
-```
-
-The CLI and web UI use the same game engine and state file. You can switch between them.
-
----
-
-## Project Structure
-
-```
-stellar-pipeline/
-├── dbt_project/              # The actual dbt project (you edit files here)
-│   ├── models/
-│   │   ├── staging/          # Staging models (clean raw data)
-│   │   ├── marts/            # Mart models (combine and transform)
-│   │   └── sources/          # Source definitions (YAML)
-│   ├── seeds/                # Source data (CSV files loaded into DuckDB)
-│   ├── dbt_project.yml       # dbt project config
-│   └── profiles.yml          # DuckDB connection config
-│
-├── frontend/                 # Web UI (Next.js + Tailwind + Monaco)
-│   ├── app/                  # Page layout
-│   ├── components/           # React components
-│   └── hooks/                # API client
-│
-├── backend/                  # API server (FastAPI)
-│   └── server.py             # All endpoints
-│
-├── stellar_dbt/              # Game engine
-│   ├── cli.py                # CLI commands
-│   ├── engine/               # Objective checking, narrative, state
-│   ├── levels/               # Level definitions (YAML)
-│   │   ├── level_01.yml
-│   │   ├── level_02.yml
-│   │   ├── level_03.yml
-│   │   ├── level_04.yml
-│   │   └── level_05.yml
-│   └── ui/                   # CLI terminal rendering
-│
-├── setup.sh                  # One-time setup script
-├── dev.sh                    # Start the game
-├── pyproject.toml            # Python package config
-└── LICENSE                   # MIT
-```
 
 ## Contributing
 

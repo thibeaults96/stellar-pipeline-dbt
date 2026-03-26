@@ -118,6 +118,8 @@ initial_files:
             description: "Cargo shipment records from all registered vessels"
             # This source needs monitoring. Check the objectives panel.
             loaded_at_field: loaded_at
+            # Fresh configs go under the config block for a source.
+            # See the dbt docs for syntax.
             columns:
               - name: shipment_id
               - name: status
@@ -170,7 +172,7 @@ objectives:
       type: tests_ran_with_failures
 
   - id: configure_freshness
-    label: "Add freshness monitoring to raw_shipments in federation_sources.yml"
+    label: "Add freshness monitoring to raw_shipments in federation_sources.yml, warn after 24 hours, error after 48 hours"
     hint: "In federation_sources.yml under raw_shipments, add a freshness: block with warn_after: {count: 24, period: hour} and error_after: {count: 48, period: hour}. This tells dbt to flag when source data goes stale."
     check:
       type: has_freshness_config

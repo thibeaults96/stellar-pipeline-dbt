@@ -68,6 +68,11 @@ export default function StatusBar({
           <span key={b.id} className="text-lg" title={b.name}>{b.emoji}</span>
         ))}
       </div>
+      <a href="https://docs.getdbt.com" target="_blank" rel="noopener noreferrer"
+        className="px-2 py-1.5 text-stellar-text-dim font-mono-tech text-xs border border-panel-border rounded hover:border-accent hover:text-accent transition-colors"
+        title="dbt Documentation">
+        dbt docs ↗
+      </a>
       <button onClick={onReset} disabled={isRunning}
         className="px-2 py-1.5 text-stellar-text-dim font-mono-tech text-xs border border-panel-border rounded hover:border-stellar-red hover:text-stellar-red transition-colors disabled:opacity-50"
         title="Reset level">

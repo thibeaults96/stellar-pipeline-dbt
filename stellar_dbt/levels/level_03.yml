@@ -78,7 +78,8 @@ initial_files:
           - name: shipment_id
             # What is this column? Add a description.
           - name: cargo_type
-            # What values are valid here? Check the source data.
+            # What values are valid here? Check the source data. Do not include 'unknown_type' in the list of valid values.
+            # see dbt docs for syntax.
           - name: status
             # What are the possible status values?
 
