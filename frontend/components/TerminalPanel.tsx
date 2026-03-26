@@ -5,9 +5,9 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*m/g, '')
 }
 
-export default function TerminalPanel({ output, success, isRunning, onRun, onTest, onCheck }: {
+export default function TerminalPanel({ output, success, isRunning, onRun, onTest, onBuild, onSnapshot }: {
   output: string; success: boolean | null; isRunning: boolean
-  onRun: () => void; onTest: () => void; onCheck: () => void
+  onRun: () => void; onTest: () => void; onBuild: () => void; onSnapshot: () => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [output])
@@ -24,9 +24,13 @@ export default function TerminalPanel({ output, success, isRunning, onRun, onTes
           className="px-2.5 py-1 text-xs font-mono-tech bg-deep text-stellar-text border border-panel-border rounded hover:bg-panel-border transition-colors disabled:opacity-40">
           dbt test
         </button>
-        <button onClick={onCheck} disabled={isRunning}
+        <button onClick={onBuild} disabled={isRunning}
           className="px-2.5 py-1 text-xs font-mono-tech bg-deep text-stellar-text border border-panel-border rounded hover:bg-panel-border transition-colors disabled:opacity-40">
-          check
+          dbt build
+        </button>
+        <button onClick={onSnapshot} disabled={isRunning}
+          className="px-2.5 py-1 text-xs font-mono-tech bg-deep text-stellar-text border border-panel-border rounded hover:bg-panel-border transition-colors disabled:opacity-40">
+          dbt snapshot
         </button>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 font-mono-tech text-xs leading-5 bg-void">

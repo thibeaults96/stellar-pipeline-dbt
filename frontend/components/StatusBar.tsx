@@ -6,7 +6,8 @@ const LEVELS = [
   { id: 2, name: 'Kepler-7b' },
   { id: 3, name: "Smuggler's Ledger" },
   { id: 4, name: 'Refresh Crisis' },
-  { id: 5, name: 'Clean Handoff' },
+  { id: 5, name: 'Time Ledger' },
+  { id: 6, name: 'Clean Handoff' },
 ]
 
 export default function StatusBar({

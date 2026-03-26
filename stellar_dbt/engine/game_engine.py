@@ -172,6 +172,118 @@ class GameEngine:
         return report
 
     @staticmethod
+    def build() -> ActionReport:
+        """Run dbt build (seed + run + test in dependency order)."""
+        state = load_state()
+        level = load_level(state.current_level)
+
+        result = dbt_runner.build()
+        state.run_count += 1
+        state.test_count += 1
+
+        events: list[str] = []
+        rr = artifact_reader.read_run_results()
+        if rr and rr.all_models_passed:
+            events.append("RUN_SUCCESS")
+        else:
+            events.append("RUN_FAILURE")
+        if rr and rr.has_test_failures:
+            events.append("TEST_FAILURE")
+        elif rr and rr.all_tests_passed:
+            events.append("TEST_SUCCESS")
+        if state.run_count == 1:
+            events.append("FIRST_RUN")
+
+        for obj in level.objectives:
+            if obj.check.type == "no_hardcoded_refs":
+                check_result = objective_checker.check(obj)
+                if not check_result and check_result.reason and "hardcoded" in (check_result.reason or "").lower():
+                    events.append("HARDCODE_DETECTED")
+
+        report = ActionReport(
+            dbt_output=result.stdout + result.stderr,
+            dbt_success=result.success,
+        )
+
+        report.objectives = GameEngine._check_all(level, state)
+        report.newly_completed = GameEngine._update_completed(level, state, report.objectives)
+
+        for obj_id in report.newly_completed:
+            events.append(f"OBJECTIVE_{obj_id}_COMPLETE")
+
+        if GameEngine._all_complete(level, state):
+            events.append("LEVEL_COMPLETE")
+            report.level_complete = True
+            report.xp_earned = level.xp_reward
+            state.total_xp += level.xp_reward
+            if level.id not in state.completed_levels:
+                state.completed_levels.append(level.id)
+            badge = EarnedBadge(
+                id=level.badge.id, emoji=level.badge.emoji,
+                name=level.badge.name, level_id=level.id,
+            )
+            state.earned_badges.append(badge)
+            report.badge = badge
+
+        fired = set(state.fired_triggers.get(level.id, []))
+        narratives, fired = narrative_engine.process(
+            events, level.narrative_triggers, level.narrative_script, fired,
+        )
+        state.fired_triggers[level.id] = list(fired)
+        state.pending_narratives = [n.model_dump() for n in narratives]
+        report.narratives = narratives
+
+        save_state(state)
+        return report
+
+    @staticmethod
+    def snapshot() -> ActionReport:
+        """Run dbt snapshot."""
+        state = load_state()
+        level = load_level(state.current_level)
+
+        result = dbt_runner.snapshot()
+
+        events: list[str] = []
+        events.append("SNAPSHOT_RUN")
+
+        report = ActionReport(
+            dbt_output=result.stdout + result.stderr,
+            dbt_success=result.success,
+        )
+
+        report.objectives = GameEngine._check_all(level, state)
+        report.newly_completed = GameEngine._update_completed(level, state, report.objectives)
+
+        for obj_id in report.newly_completed:
+            events.append(f"OBJECTIVE_{obj_id}_COMPLETE")
+
+        if GameEngine._all_complete(level, state):
+            events.append("LEVEL_COMPLETE")
+            report.level_complete = True
+            report.xp_earned = level.xp_reward
+            state.total_xp += level.xp_reward
+            if level.id not in state.completed_levels:
+                state.completed_levels.append(level.id)
+            badge = EarnedBadge(
+                id=level.badge.id, emoji=level.badge.emoji,
+                name=level.badge.name, level_id=level.id,
+            )
+            state.earned_badges.append(badge)
+            report.badge = badge
+
+        fired = set(state.fired_triggers.get(level.id, []))
+        narratives, fired = narrative_engine.process(
+            events, level.narrative_triggers, level.narrative_script, fired,
+        )
+        state.fired_triggers[level.id] = list(fired)
+        state.pending_narratives = [n.model_dump() for n in narratives]
+        report.narratives = narratives
+
+        save_state(state)
+        return report
+
+    @staticmethod
     def check_objectives() -> ActionReport:
         """Show objective state without re-evaluating (only run/test evaluate)."""
         state = load_state()

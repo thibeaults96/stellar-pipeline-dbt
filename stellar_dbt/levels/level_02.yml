@@ -207,6 +207,12 @@ narrative_triggers:
     narrative_key: test_results_explain
     once: true
 
+  # ── Teach dbt build after tests are done ──
+  - id: nt_build_tip
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: build_tip
+    once: true
+
   # ── Guide freshness after tests are done ──
   - id: nt_freshness_guide
     event: OBJECTIVE_run_tests_COMPLETE
@@ -249,6 +255,12 @@ narrative_script:
     character: R0-B3RT
     message: "There it is. The tests caught the bad rows. Here's what matters: <highlight>the models still build, but now the problem is visible</highlight>. In production, a failing test can block a deploy or page someone. You didn't fix the data, that's the source team's problem. What you did is make sure nobody can miss it. That's the job."
     priority: high
+
+  build_tip:
+    id: build_tip
+    character: R0-B3RT
+    message: "Quick tip: you've been using <highlight>dbt run</highlight> and <highlight>dbt test</highlight> separately. There's a command called <highlight>dbt build</highlight> that does everything in one step: seeds, models, tests, and snapshots, all in dependency order. From here on out you can use that instead of running them separately."
+    priority: normal
 
   freshness_guide:
     id: freshness_guide

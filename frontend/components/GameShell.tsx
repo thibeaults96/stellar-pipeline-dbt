@@ -124,9 +124,22 @@ export default function GameShell() {
     } finally { setIsRunning(false) }
   }, [handleReport])
 
-  const handleCheck = useCallback(async () => {
-    const r = await api.check()
-    await handleReport(r)
+  const handleBuild = useCallback(async () => {
+    setIsRunning(true)
+    try {
+      const r = await api.build()
+      setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
+      await handleReport(r)
+    } finally { setIsRunning(false) }
+  }, [handleReport])
+
+  const handleSnapshot = useCallback(async () => {
+    setIsRunning(true)
+    try {
+      const r = await api.snapshot()
+      setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
+      await handleReport(r)
+    } finally { setIsRunning(false) }
   }, [handleReport])
 
   const handleReset = useCallback(async () => {
@@ -221,7 +234,7 @@ export default function GameShell() {
           </div>
           <div className="flex-1 min-h-0">
             <TerminalPanel output={termOutput} success={termSuccess} isRunning={isRunning}
-              onRun={handleRun} onTest={handleTest} onCheck={handleCheck} />
+              onRun={handleRun} onTest={handleTest} onBuild={handleBuild} onSnapshot={handleSnapshot} />
           </div>
         </div>
       </div>

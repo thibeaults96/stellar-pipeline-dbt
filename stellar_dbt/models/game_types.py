@@ -75,6 +75,11 @@ class DuckDBColumnValuesCheck(BaseModel):
     table: str
     query: str  # SQL condition that should return 0 rows (no violations)
 
+class SnapshotRan(BaseModel):
+    """Check that a snapshot table exists in DuckDB (meaning dbt snapshot was run)."""
+    type: Literal["snapshot_ran"] = "snapshot_ran"
+    table: str
+
 class DuckDBRowCount(BaseModel):
     """Check that a model has rows and optionally that all rows match a condition."""
     type: Literal["duckdb_row_count"] = "duckdb_row_count"
@@ -87,7 +92,7 @@ ObjectiveCheck = Union[
     HasColumnAlias, HasRefCall, FileContainsActiveSql, FileContains,
     NoHardcodedRefs, HasTest, HasFreshnessConfig,
     ArtifactAllModelsPass, ArtifactModelPasses, ArtifactTestRanWithFailures,
-    DuckDBColumnExists, DuckDBColumnsExist, DuckDBColumnValuesCheck, DuckDBRowCount,
+    DuckDBColumnExists, DuckDBColumnsExist, DuckDBColumnValuesCheck, DuckDBRowCount, SnapshotRan,
 ]
 
 

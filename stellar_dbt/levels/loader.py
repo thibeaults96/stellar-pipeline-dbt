@@ -36,9 +36,9 @@ def apply_level(level: LevelConfig) -> None:
     if DB_PATH.exists():
         DB_PATH.unlink()
 
-    # Clean models and macros directories completely then rebuild from initial_files.
+    # Clean models, macros, and snapshots directories then rebuild from initial_files.
     # This prevents leftover files from other levels breaking things.
-    for dirname in ("models", "macros"):
+    for dirname in ("models", "macros", "snapshots"):
         d = DBT_PROJECT_DIR / dirname
         if d.exists():
             shutil.rmtree(d)

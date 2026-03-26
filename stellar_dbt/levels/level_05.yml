@@ -1,15 +1,15 @@
 id: 5
-title: "The Clean Handoff"
-subtitle: "Build a macro. Close the investigation."
+title: "The Time Ledger"
+subtitle: "Track how data changes over time."
 character: "R0-B3RT"
-xp_reward: 250
+xp_reward: 230
 
 badge:
-  id: federation_analyst
-  emoji: "\U0001f31f"
-  name: "Federation Analyst"
-  description: "Completed the Stellar Pipeline training. Built macros, models, tests, docs, and incremental pipelines."
-  xp: 250
+  id: time_keeper
+  emoji: "\U0001f570\ufe0f"
+  name: "Time Keeper"
+  description: "Built a dbt snapshot to track how shipment data changes over time."
+  xp: 230
 
 locked_files:
   - models/staging/stg_planets.sql
@@ -17,7 +17,7 @@ locked_files:
   - models/marts/fct_trade_routes.sql
 
 seed_files:
-  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,updated_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T14:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0,2847-03-03T08:00:00Z\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-03-04T00:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0,2847-03-04T10:00:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0,2847-03-04T22:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-05T00:00:00Z\nSHP-007,TAU-4,MRD-9,supplies,3100kg,2847-03-05T06:00:00Z,,IN_TRANSIT,0,2847-03-05T06:00:00Z\nSHP-008,MRD-9,NM-00,classified,1500kg,2847-03-05T12:00:00Z,,IN_TRANSIT,1,2847-03-05T12:00:00Z\nSHP-009,K7B,NM-00,humanitarian_aid,600kg,2847-03-06T02:00:00Z,,IN_TRANSIT,1,2847-03-06T02:00:00Z\n"
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,updated_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T14:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0,2847-03-03T08:00:00Z\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-03-04T00:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0,2847-03-04T10:00:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0,2847-03-04T22:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-05T00:00:00Z\n"
 
 initial_files:
   models/staging/stg_shipments.sql: |
@@ -56,44 +56,27 @@ initial_files:
     )
     select * from routes
 
-  macros/flag_suspicious.sql: |
-    -- flag_suspicious.sql
-    --
-    -- This is a MACRO file. Macros are reusable Jinja functions that you can
-    -- call from any model. They live in the macros/ folder.
-    --
-    -- Your job: create a macro called "flag_suspicious" that takes a column name
-    -- for the result and returns a CASE WHEN expression that flags suspicious
-    -- shipments.
-    --
-    -- A shipment is suspicious if ANY of these are true:
-    --   - voss_flag = 1
-    --   - dest_is_federation = false
-    --   - cargo_type = 'classified'
-    --
-    -- Macro syntax:
-    --   {% macro macro_name(parameter) %}
-    --     ... SQL that gets inserted where the macro is called ...
-    --   {% endmacro %}
-    --
-    -- Then in a model you call it with: {{ macro_name('column_name') }}
-    --
-    -- Check the objectives panel for specifics.
-
-  models/marts/fct_voss_investigation.sql: |
-    -- fct_voss_investigation.sql
-    --
-    -- Build an investigation model using your macro.
-    --
-    -- Steps:
-    --   1. Pull from fct_trade_routes using ref()
-    --   2. Call your flag_suspicious macro to add the is_suspicious column
-    --   3. Filter to only suspicious rows
-    --   4. Add a risk_level column: 'high' if cargo_type is 'classified', else 'medium'
-    --
-    -- Check the objectives panel for specifics.
-
-    select 1 as placeholder
+  snapshots/shipment_snapshots.yml: |
+    # shipment_snapshots.yml
+    #
+    # SNAPSHOTS track how rows change over time. Unlike regular models that
+    # always show current state, a snapshot keeps a history of every change.
+    #
+    # In dbt, snapshots are defined in YAML files in the snapshots/ folder.
+    # Each snapshot needs:
+    #   - name: what to call the snapshot table
+    #   - relation: which model or source to snapshot (using ref() or source())
+    #   - config: how to detect changes
+    #
+    # The 'timestamp' strategy compares the updated_at column to detect changes.
+    # The 'unique_key' tells dbt which column identifies each row.
+    #
+    # dbt automatically adds tracking columns:
+    #   dbt_valid_from  — when this version of the row became active
+    #   dbt_valid_to    — when it was replaced (NULL if still current)
+    #   dbt_scd_id      — unique ID for each version
+    #
+    # Check the objectives panel for specifics.
 
   models/sources/federation_sources.yml: |
     version: 2
@@ -109,62 +92,44 @@ initial_files:
             description: "Planetary registry and resource data"
 
 objectives:
-  # Phase 1: Create the macro
-  - id: create_macro
-    label: "Create a flag_suspicious macro in macros/flag_suspicious.sql"
-    hint: "Define the macro with: {% macro flag_suspicious(column_name) %} case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }} {% endmacro %}"
+  - id: snapshot_name
+    label: "Define a snapshot called shipment_status_snapshot"
+    hint: "In shipment_snapshots.yml, start with: snapshots: then add - name: shipment_status_snapshot"
     check:
       type: file_contains
-      filename: macros/flag_suspicious.sql
-      pattern: "macro\\s+flag_suspicious"
+      filename: snapshots/shipment_snapshots.yml
+      pattern: "name:\\s*shipment_status_snapshot"
 
-  - id: macro_has_case_when
-    label: "The macro should contain the CASE WHEN logic"
-    hint: "Inside the macro, write: case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }}"
+  - id: snapshot_relation
+    label: "Set the relation to ref('stg_shipments')"
+    hint: "Add: relation: ref('stg_shipments'). This tells dbt which model to track for changes."
     check:
       type: file_contains
-      filename: macros/flag_suspicious.sql
-      pattern: "case\\s+when[\\s\\S]*voss_flag[\\s\\S]*then\\s+1[\\s\\S]*else\\s+0[\\s\\S]*end"
+      filename: snapshots/shipment_snapshots.yml
+      pattern: "relation:\\s*ref\\(['\"]stg_shipments['\"]\\)"
 
-  # Phase 2: Build the investigation model
-  - id: ref_trade_routes
-    label: "Pull data from fct_trade_routes using ref()"
-    hint: "Start with: select * from {{ ref('fct_trade_routes') }}"
+  - id: snapshot_strategy
+    label: "Configure timestamp strategy with updated_at"
+    hint: "Under config:, add strategy: timestamp and updated_at: updated_at. This tells dbt to detect changes by comparing the updated_at column."
     check:
-      type: has_ref_call
-      filename: models/marts/fct_voss_investigation.sql
-      target_model: fct_trade_routes
+      type: file_contains
+      filename: snapshots/shipment_snapshots.yml
+      pattern: "strategy:\\s*timestamp"
 
-  - id: use_macro
-    label: "Call the flag_suspicious macro in the investigation model"
-    hint: "In your SELECT, add: {{ flag_suspicious('is_suspicious') }}. This calls your macro and names the output column is_suspicious."
+  - id: snapshot_unique_key
+    label: "Set unique_key to shipment_id"
+    hint: "Under config:, add unique_key: shipment_id. This tells dbt which column identifies each row."
     check:
-      type: file_contains_active_sql
-      filename: models/marts/fct_voss_investigation.sql
-      pattern: "flag_suspicious\\s*\\("
+      type: file_contains
+      filename: snapshots/shipment_snapshots.yml
+      pattern: "unique_key:\\s*shipment_id"
 
-  - id: add_risk_level
-    label: "Add a risk_level column: 'high' for classified cargo, 'medium' otherwise"
-    hint: "Add another CASE WHEN: case when cargo_type = 'classified' then 'high' else 'medium' end as risk_level"
+  - id: run_snapshot
+    label: "Run dbt snapshot successfully"
+    hint: "Click 'dbt snapshot' to run it. On first run it captures the current state of all rows."
     check:
-      type: duckdb_columns_exist
-      table: fct_voss_investigation
-      columns: [risk_level, is_suspicious]
-
-  - id: filter_suspicious
-    label: "Filter to only show suspicious rows (is_suspicious = 1)"
-    hint: "Add: where is_suspicious = 1. You may need to wrap your query in a CTE first."
-    check:
-      type: duckdb_row_count
-      table: fct_voss_investigation
-      min_rows: 1
-      where: "is_suspicious = 1"
-
-  - id: all_green
-    label: "Run dbt and all models pass"
-    hint: "Click 'dbt run' to build everything."
-    check:
-      type: all_models_pass
+      type: snapshot_ran
+      table: shipment_status_snapshot
 
 narrative_triggers:
   - id: nt_start
@@ -174,7 +139,7 @@ narrative_triggers:
 
   - id: nt_start_guide
     event: LEVEL_START
-    narrative_key: macro_guide
+    narrative_key: snapshot_guide
     once: true
 
   - id: nt_first_run
@@ -182,24 +147,24 @@ narrative_triggers:
     narrative_key: first_run
     once: true
 
-  - id: nt_macro_done
-    event: OBJECTIVE_macro_has_case_when_COMPLETE
-    narrative_key: macro_done
+  - id: nt_name_done
+    event: OBJECTIVE_snapshot_name_COMPLETE
+    narrative_key: name_done
     once: true
 
-  - id: nt_ref_done
-    event: OBJECTIVE_ref_trade_routes_COMPLETE
-    narrative_key: use_macro_guide
+  - id: nt_relation_done
+    event: OBJECTIVE_snapshot_relation_COMPLETE
+    narrative_key: relation_done
     once: true
 
-  - id: nt_macro_used
-    event: OBJECTIVE_use_macro_COMPLETE
-    narrative_key: risk_level_guide
+  - id: nt_config_done
+    event: OBJECTIVE_snapshot_unique_key_COMPLETE
+    narrative_key: config_done
     once: true
 
-  - id: nt_filter_done
-    event: OBJECTIVE_filter_suspicious_COMPLETE
-    narrative_key: almost_there
+  - id: nt_snapshot_run
+    event: SNAPSHOT_RUN
+    narrative_key: snapshot_ran
     once: true
 
   - id: nt_complete
@@ -207,107 +172,51 @@ narrative_triggers:
     narrative_key: level_complete
     once: true
 
-  # ── Epilogue: resolves the VOSS story ──
-  - id: nt_epilogue_1
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_1
-    once: true
-
-  - id: nt_epilogue_2
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_2
-    once: true
-
-  - id: nt_epilogue_3
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_3
-    once: true
-
-  - id: nt_epilogue_voss
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_voss
-    once: true
-
-  - id: nt_epilogue_final
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_final
-    once: true
-
 narrative_script:
   intro:
     id: intro
     character: R0-B3RT
-    message: "Alright, last one. I've been looking at those VOSS-flagged shipments and something is definitely going on. I need you to build an investigation model, but not with one-off logic. Build a <highlight>macro</highlight> that flags suspicious shipments, something we can reuse across the whole fleet."
+    message: "We've got a new problem. Shipments keep changing status, IN_TRANSIT to DELIVERED, sometimes back to IN_TRANSIT. But our models only show the current state. When something changes, the old data is gone. We need a way to <highlight>track how data changes over time</highlight>. That's what dbt snapshots do."
     priority: high
 
-  macro_guide:
-    id: macro_guide
+  snapshot_guide:
+    id: snapshot_guide
     character: R0-B3RT
-    message: "Open <highlight>macros/flag_suspicious.sql</highlight>. Macros are reusable Jinja functions. You define them once, then call them from any model. The comments in the file explain the syntax. Start by defining the macro with the CASE WHEN logic, then we'll use it in the investigation model."
+    message: "Open <highlight>snapshots/shipment_snapshots.yml</highlight>. In modern dbt, snapshots are defined in YAML, not SQL. You set a name, point it at a model with <highlight>relation:</highlight>, and configure how dbt detects changes. The comments in the file explain the structure."
     priority: normal
 
   first_run:
     id: first_run
     character: R0-B3RT
-    message: "Models built fine. Now check fct_trade_routes in the preview. You'll see voss_flag, destination names, and whether the destination is a Federation member. Those are the fields your macro needs to check."
+    message: "Models ran fine. Now set up the snapshot definition. You need to tell dbt what to call it, which model to track, and how to detect changes."
     priority: normal
 
-  macro_done:
-    id: macro_done
+  name_done:
+    id: name_done
     character: R0-B3RT
-    message: "Macro looks good. Now open <highlight>fct_voss_investigation.sql</highlight> and build the investigation model. Start by pulling from fct_trade_routes with ref(), then call your macro with <highlight>{{ flag_suspicious('is_suspicious') }}</highlight> in the SELECT."
+    message: "Good, the snapshot is named. Now add <highlight>relation: ref('stg_shipments')</highlight> to tell dbt which model to snapshot. This is like how models use ref() to declare dependencies."
     priority: normal
 
-  use_macro_guide:
-    id: use_macro_guide
+  relation_done:
+    id: relation_done
     character: R0-B3RT
-    message: "ref() is wired up. Now call your macro in the SELECT list. The syntax is: {{ flag_suspicious('is_suspicious') }}. That'll expand into the CASE WHEN you wrote and name the result column is_suspicious."
+    message: "Relation is set. Now add the config block. You need <highlight>strategy: timestamp</highlight> (dbt compares timestamps to detect changes), <highlight>unique_key: shipment_id</highlight> (identifies each row), and <highlight>updated_at: updated_at</highlight> (the column dbt watches for changes)."
     priority: normal
 
-  risk_level_guide:
-    id: risk_level_guide
+  config_done:
+    id: config_done
     character: R0-B3RT
-    message: "Flag is working. Now add a risk level too. Add a column called <highlight>risk_level</highlight>: 'high' if the cargo_type is 'classified', 'medium' for everything else. Then filter the whole thing to only show rows where is_suspicious = 1."
+    message: "Config looks good. Now click <highlight>dbt snapshot</highlight> to run it. On the first run, dbt captures the current state of every row. If you ran it again after the data changed, it would create new versions of the changed rows while keeping the old ones."
     priority: normal
 
-  almost_there:
-    id: almost_there
+  snapshot_ran:
+    id: snapshot_ran
     character: R0-B3RT
-    message: "Filter's in. Run it and let's see what turns up."
-    priority: high
+    message: "Snapshot ran. Check the preview tab for <highlight>shipment_status_snapshot</highlight>. You'll see the dbt-added columns: dbt_valid_from (when this version started), dbt_valid_to (NULL for current rows), and dbt_scd_id. If a shipment's status changes later, the old row gets a dbt_valid_to timestamp and a new row appears."
+    priority: normal
 
   level_complete:
     id: level_complete
     character: R0-B3RT
-    message: "Four shipments flagged. All going to Null Meridian. Two with classified cargo, two labeled humanitarian aid that nobody authorized. Every single one has voss_flag = 1. I'm forwarding this to Federation Command."
+    message: "Snapshots are running. Now we have a complete audit trail of every shipment change. If someone modifies a VOSS-flagged shipment's status after the fact, the snapshot catches it. The old data doesn't just disappear anymore. That's how you build accountability into a pipeline."
     priority: high
-
-  epilogue_1:
-    id: epilogue_1
-    character: R0-B3RT
-    message: "Okay, I just got a response back from Command. They pulled the shipping manifests. Those humanitarian aid shipments to Null Meridian? There's no aid program for that planet. It's not even in the Federation. Someone inside logistics command was routing cargo there and burying it in the data."
-    priority: low
-
-  epilogue_2:
-    id: epilogue_2
-    character: R0-B3RT
-    message: "They also figured out why VOSS disappeared. He flagged these exact shipments six months ago in an internal report. Two days later his access was revoked and he was reassigned to a listening post in the outer rim. No explanation. The report was deleted from the system. But he left something behind."
-    priority: low
-
-  epilogue_3:
-    id: epilogue_3
-    character: R0-B3RT
-    message: "The voss_flag column. It was never part of the original schema. VOSS added it to the source data before he was removed. A dead drop, hidden in plain sight. He was betting that the next analyst would notice a column that shouldn't exist, look at the data, and ask why certain shipments were flagged. <highlight>That analyst was you.</highlight>"
-    priority: low
-
-  epilogue_voss:
-    id: epilogue_voss
-    character: VOSS
-    message: "...I wasn't sure anyone would look that closely. Most people just build the pipeline and move on. You actually read the data. <highlight>That's the whole job. The pipeline isn't plumbing. It's how the truth gets from the source to the people who need it.</highlight> Thanks for not looking away, AE-7."
-    priority: low
-
-  epilogue_final:
-    id: epilogue_final
-    character: R0-B3RT
-    message: "For the record: you built a dbt project from scratch. Staging, marts, tests, documentation, incremental models, macros, and an investigation layer that cracked open a smuggling operation. <highlight>Not bad for a recruit.</highlight> I've closed out your training file. You're certified. Go build something."
-    priority: low

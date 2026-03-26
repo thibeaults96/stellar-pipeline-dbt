@@ -248,6 +248,22 @@ def _check(c: ObjectiveCheck) -> CheckResult:
         except Exception as e:
             return _fail(f"Query failed: {e}")
 
+    if c.type == "snapshot_ran":
+        if not DB_PATH.exists():
+            return _fail("No database yet. Run 'dbt snapshot' first.")
+        try:
+            conn = duckdb.connect(str(DB_PATH), read_only=True)
+            exists = conn.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = ? AND table_schema = 'main'",
+                [c.table],
+            ).fetchone()
+            conn.close()
+            if exists:
+                return _ok()
+            return _fail(f"Snapshot table '{c.table}' not found. Click 'dbt snapshot' to run it.")
+        except Exception as e:
+            return _fail(f"Could not query database: {e}")
+
     return _fail(f"Unknown check type: {c.type}")
 
 

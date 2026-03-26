@@ -70,5 +70,21 @@ def compile_project() -> DbtResult:
     return _run_dbt("compile")
 
 
+def build() -> DbtResult:
+    """Seed then build (run + test in dependency order)."""
+    seed_result = _run_dbt("seed")
+    if not seed_result.success:
+        return seed_result
+    return _run_dbt("build")
+
+
+def snapshot() -> DbtResult:
+    """Seed then run snapshots."""
+    seed_result = _run_dbt("seed")
+    if not seed_result.success:
+        return seed_result
+    return _run_dbt("snapshot")
+
+
 def source_freshness() -> DbtResult:
     return _run_dbt("source", "freshness")

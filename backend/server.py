@@ -65,6 +65,18 @@ async def test_dbt():
     return serialize_report(report)
 
 
+@app.post("/api/build")
+async def build_dbt():
+    report = GameEngine.build()
+    return serialize_report(report)
+
+
+@app.post("/api/snapshot")
+async def snapshot_dbt():
+    report = GameEngine.snapshot()
+    return serialize_report(report)
+
+
 @app.post("/api/check")
 async def check_objectives():
     report = GameEngine.check_objectives()
@@ -146,8 +158,8 @@ async def list_files():
     for ext in ("*.sql", "*.yml", "*.yaml"):
         for path in DBT_PROJECT_DIR.rglob(ext):
             rel = str(path.relative_to(DBT_PROJECT_DIR))
-            # Skip files outside models/, sources/, and macros/
-            if not (rel.startswith("models/") or rel.startswith("sources/") or rel.startswith("macros/")):
+            # Skip files outside models/, sources/, macros/, and snapshots/
+            if not (rel.startswith("models/") or rel.startswith("sources/") or rel.startswith("macros/") or rel.startswith("snapshots/")):
                 continue
             files.append({"path": rel, "locked": rel in locked})
     return sorted(files, key=lambda f: f["path"])
