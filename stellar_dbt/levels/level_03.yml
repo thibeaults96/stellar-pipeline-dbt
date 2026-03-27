@@ -102,7 +102,7 @@ objectives:
     check:
       type: file_contains
       filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*stg_shipments[\\s\\S]*?description:\\s*[\"'].{3,}"
+      pattern: "name:\\s*stg_shipments[\\s\\S]*?description:\\s*[\"']?\\S.{2,}"
 
   - id: describe_shipment_id
     label: "Add a description to the shipment_id column"
@@ -110,7 +110,7 @@ objectives:
     check:
       type: file_contains
       filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*shipment_id[\\s\\S]*?description:\\s*[\"'].{5,}"
+      pattern: "name:\\s*shipment_id[\\s\\S]*?description:\\s*[\"']?\\S.{4,}"
 
   # Phase 2: Add accepted_values test
   - id: add_status_accepted_values
@@ -136,7 +136,7 @@ objectives:
     check:
       type: file_contains
       filename: models/marts/_fct_trade_routes.yml
-      pattern: "name:\\s*fct_trade_routes[\\s\\S]*?description:\\s*[\"'].{3,}"
+      pattern: "name:\\s*fct_trade_routes[\\s\\S]*?description:\\s*[\"']?\\S.{2,}"
 
   # Phase 4: Run tests
   - id: run_tests
@@ -144,6 +144,13 @@ objectives:
     hint: "Click 'dbt test'. The accepted_values test on cargo_type should fail because of the UNKNOWN_TYPE value in the data."
     check:
       type: tests_ran_with_failures
+
+  # Phase 5: Confirm models still build
+  - id: all_green
+    label: "Run dbt — all models pass"
+    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new docs and tests."
+    check:
+      type: all_models_pass
 
 narrative_triggers:
   - id: nt_start
@@ -179,6 +186,11 @@ narrative_triggers:
   - id: nt_test_results
     event: OBJECTIVE_run_tests_COMPLETE
     narrative_key: test_results
+    once: true
+
+  - id: nt_all_green_guide
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: final_run_guide
     once: true
 
   - id: nt_complete
@@ -228,6 +240,12 @@ narrative_script:
     character: R0-B3RT
     message: "The accepted_values test caught that unknown cargo type. That shipment SHP-007 with 'unknown_type' is flagged. Interesting that it's also headed to Null Meridian with voss_flag set to 1. Starting to see a pattern with these flagged shipments."
     priority: high
+
+  final_run_guide:
+    id: final_run_guide
+    character: R0-B3RT
+    message: "Tests are doing their job. Now run dbt to confirm the models still build cleanly."
+    priority: normal
 
   level_complete:
     id: level_complete

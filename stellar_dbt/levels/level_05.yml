@@ -132,6 +132,12 @@ objectives:
       type: snapshot_ran
       table: shipment_status_snapshot
 
+  - id: all_green
+    label: "Run dbt — all models pass"
+    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new snapshot."
+    check:
+      type: all_models_pass
+
 narrative_triggers:
   - id: nt_start
     event: LEVEL_START
@@ -166,6 +172,11 @@ narrative_triggers:
   - id: nt_snapshot_run
     event: SNAPSHOT_RUN
     narrative_key: snapshot_ran
+    once: true
+
+  - id: nt_all_green_guide
+    event: OBJECTIVE_run_snapshot_COMPLETE
+    narrative_key: final_run_guide
     once: true
 
   - id: nt_complete
@@ -214,6 +225,12 @@ narrative_script:
     id: snapshot_ran
     character: R0-B3RT
     message: "Snapshot ran. Check the preview tab for <highlight>shipment_status_snapshot</highlight>. You'll see the dbt-added columns: dbt_valid_from (when this version started), dbt_valid_to (NULL for current rows), and dbt_scd_id. If a shipment's status changes later, the old row gets a dbt_valid_to timestamp and a new row appears."
+    priority: normal
+
+  final_run_guide:
+    id: final_run_guide
+    character: R0-B3RT
+    message: "Snapshot is set up. Run dbt to make sure all models are still building cleanly."
     priority: normal
 
   level_complete:

@@ -179,6 +179,12 @@ objectives:
       source_name: federation
       table_name: raw_shipments
 
+  - id: all_green
+    label: "Run dbt — all models pass"
+    hint: "Click 'dbt run' to confirm everything is still building cleanly with your new configuration."
+    check:
+      type: all_models_pass
+
 narrative_triggers:
   # ── Level start: set the scene ──
   - id: nt_start
@@ -219,6 +225,12 @@ narrative_triggers:
   - id: nt_freshness_guide
     event: OBJECTIVE_run_tests_COMPLETE
     narrative_key: freshness_guide
+    once: true
+
+  # ── Final run ──
+  - id: nt_all_green_guide
+    event: OBJECTIVE_configure_freshness_COMPLETE
+    narrative_key: final_run_guide
     once: true
 
   # ── Level complete ──
@@ -268,6 +280,12 @@ narrative_script:
     id: freshness_guide
     character: R0-B3RT
     message: "One more thing. Open <highlight>federation_sources.yml</highlight> and look at the raw_shipments source. There's no freshness monitoring on it. If the source data stops updating, nobody finds out until reports start looking wrong. Add a <highlight>freshness:</highlight> block with warn_after and error_after thresholds so dbt can flag stale data."
+    priority: normal
+
+  final_run_guide:
+    id: final_run_guide
+    character: R0-B3RT
+    message: "Freshness config is set. Run dbt one more time to confirm all models are still building cleanly."
     priority: normal
 
   level_complete:

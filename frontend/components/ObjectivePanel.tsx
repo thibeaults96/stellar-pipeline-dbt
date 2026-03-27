@@ -29,10 +29,12 @@ export default function ObjectivePanel({ objectives, newlyCompleted }: {
                   {obj.passed ? '✓' : isCurrent ? '▸' : ''}
                 </span>
                 <span className={`flex-1 ${obj.passed ? 'line-through text-stellar-text-dim' : ''}`}>{obj.label}</span>
-                {!obj.passed && obj.hint && (
+              </div>
+              {!obj.passed && obj.hint && (
+                <div className="mt-1 ml-6">
                   <button
                     onClick={() => setShowHint(hintVisible ? null : obj.id)}
-                    className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono-tech transition-colors ${
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tech transition-colors ${
                       hintVisible
                         ? 'bg-stellar-amber/20 text-stellar-amber'
                         : 'text-stellar-text-dim hover:text-stellar-amber border border-panel-border hover:border-stellar-amber/40'
@@ -40,8 +42,8 @@ export default function ObjectivePanel({ objectives, newlyCompleted }: {
                   >
                     hint
                   </button>
-                )}
-              </div>
+                </div>
+              )}
               {hintVisible && obj.hint && (
                 <div className="mt-1 ml-6 text-xs text-stellar-amber font-mono-tech leading-relaxed">
                   {obj.hint}
