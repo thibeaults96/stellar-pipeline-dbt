@@ -93,12 +93,7 @@ initial_files:
             description: "Planetary registry and resource data"
 
 objectives:
-  - id: all_green
-    label: "Run dbt — all models pass"
-    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new snapshot."
-    check:
-      type: all_models_pass
-      
+
   - id: snapshot_name
     label: "Define a snapshot called shipment_status_snapshot"
     hint: "In shipment_snapshots.yml, start with: snapshots: then add - name: shipment_status_snapshot"
@@ -130,6 +125,12 @@ objectives:
       type: file_contains
       filename: snapshots/shipment_snapshots.yml
       pattern: "unique_key:\\s*shipment_id"
+
+  - id: all_green
+    label: "Run dbt — all models pass"
+    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new snapshot."
+    check:
+      type: all_models_pass
 
   - id: run_snapshot
     label: "Run dbt snapshot successfully"
@@ -218,7 +219,7 @@ narrative_script:
   config_done:
     id: config_done
     character: R0-B3RT
-    message: "Config looks good. Now click <highlight>dbt snapshot</highlight> to run it. On the first run, dbt captures the current state of every row. If you ran it again after the data changed, it would create new versions of the changed rows while keeping the old ones."
+    message: "Config looks good. Now click <highlight>dbt build</highlight> or <highlight>dbt run</highlight> and <highlight>dbt snapshot</highlight> to run it. On the first run, dbt captures the current state of every row. If you ran it again after the data changed, it would create new versions of the changed rows while keeping the old ones."
     priority: normal
 
   snapshot_ran:

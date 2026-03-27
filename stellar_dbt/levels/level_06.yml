@@ -136,7 +136,7 @@ objectives:
       target_model: fct_trade_routes
 
   - id: use_macro
-    label: "Call the flag_suspicious macro in the investigation model"
+    label: "Call the flag_suspicious macro in the investigation model, name the column is_suspicious"
     hint: "In your SELECT, add: {{ flag_suspicious('is_suspicious') }}. This calls your macro and names the output column is_suspicious."
     check:
       type: file_contains_active_sql
