@@ -93,6 +93,12 @@ initial_files:
             description: "Planetary registry and resource data"
 
 objectives:
+  - id: all_green
+    label: "Run dbt — all models pass"
+    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new snapshot."
+    check:
+      type: all_models_pass
+      
   - id: snapshot_name
     label: "Define a snapshot called shipment_status_snapshot"
     hint: "In shipment_snapshots.yml, start with: snapshots: then add - name: shipment_status_snapshot"
@@ -131,12 +137,6 @@ objectives:
     check:
       type: snapshot_ran
       table: shipment_status_snapshot
-
-  - id: all_green
-    label: "Run dbt — all models pass"
-    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new snapshot."
-    check:
-      type: all_models_pass
 
 narrative_triggers:
   - id: nt_start
