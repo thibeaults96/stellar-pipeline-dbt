@@ -112,7 +112,7 @@ objectives:
       target_model: stg_shipments
 
   - id: add_is_incremental
-    label: "Add an is_incremental() filter for delta processing"
+    label: "Add an is_incremental() filter for delta processing on updated_at using {{this}}"
     hint: "Add a WHERE clause that only runs on incremental loads. The pattern is: {% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}"
     check:
       type: file_contains_active_sql
