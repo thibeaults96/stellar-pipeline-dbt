@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api, type GameStatus, type ActionReport, type FileEntry, type SourceEntry, type SourcePreview, type NarrativeEvent, type Objective } from '@/hooks/useGameApi'
 import StatusBar from './StatusBar'
 import FileTree from './FileTree'
 import CodeEditor from './CodeEditor'
 import DataPreview from './DataPreview'
 import ObjectivePanel from './ObjectivePanel'
-import TerminalPanel from './TerminalPanel'
 import NarrativePanel from './NarrativePanel'
+import NarrativeToast, { type ToastEntry } from './NarrativeToast'
 import LevelComplete from './LevelComplete'
 import BottomPane from './BottomPane'
 
@@ -29,6 +29,21 @@ export default function GameShell() {
   const [levelComplete, setLevelComplete] = useState<{ badge: { emoji: string; name: string }; xp: number } | null>(null)
   const [dagKey, setDagKey] = useState(0)
   const [previewModel, setPreviewModel] = useState('stg_shipments')
+  const [bottomTab, setBottomTab] = useState<'dag' | 'preview' | 'terminal'>('dag')
+  const [toasts, setToasts] = useState<ToastEntry[]>([])
+  const toastKeyRef = useRef(0)
+
+  const pushToasts = useCallback((events: NarrativeEvent[]) => {
+    if (!events.length) return
+    setToasts(prev => [
+      ...prev,
+      ...events.map(n => ({ key: ++toastKeyRef.current, narrative: n })),
+    ])
+  }, [])
+
+  const dismissToast = useCallback((key: number) => {
+    setToasts(prev => prev.filter(t => t.key !== key))
+  }, [])
 
   // Start Level 1 on mount (player just clicked "Begin Mission")
   const loadLevel = useCallback(async (levelId: number) => {
@@ -43,6 +58,9 @@ export default function GameShell() {
     setFileContent('')
     setFileLocked(false)
     setLevelComplete(null)
+    // Clear any leftover toasts before queuing this level's intro narratives.
+    setToasts([])
+    pushToasts(report.narratives)
     setDagKey(k => k + 1)
     // Await these so the file list is current before auto-open triggers
     const [s, newFiles, newSources] = await Promise.all([
@@ -79,7 +97,11 @@ export default function GameShell() {
 
   useEffect(() => {
     if (files.length > 0 && !activeFile && !previewData) {
-      const first = files.find(f => !f.locked && f.path.endsWith('.sql'))
+      // Prefer an unlocked .sql, but fall back to .yml/.yaml so YAML-only
+      // levels (L3, L5) don't strand the player on "Select a file to edit".
+      const first =
+        files.find(f => !f.locked && f.path.endsWith('.sql')) ??
+        files.find(f => !f.locked && (f.path.endsWith('.yml') || f.path.endsWith('.yaml')))
       if (first) openFile(first.path)
     }
   }, [files, activeFile, previewData, openFile])
@@ -99,24 +121,32 @@ export default function GameShell() {
   const handleReport = useCallback(async (report: ActionReport) => {
     setObjectives(report.objectives)
     setNewlyCompleted(report.newlyCompleted)
-    if (report.narratives.length) setNarratives(prev => [...prev, ...report.narratives])
+    if (report.narratives.length) {
+      setNarratives(prev => [...prev, ...report.narratives])
+      pushToasts(report.narratives)
+    }
     if (report.levelComplete && report.badge) setLevelComplete({ badge: report.badge, xp: report.xpEarned })
     setDagKey(k => k + 1)
     const s = await api.getStatus()
     setStatus(s)
-  }, [])
+  }, [pushToasts])
 
   const handleRun = useCallback(async () => {
     setIsRunning(true)
+    setBottomTab('terminal')
     try {
       const r = await api.run()
       setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
       await handleReport(r)
+      // Show the lineage on success so the user sees the pipeline turn green;
+      // keep terminal visible on failure so they can read the error.
+      if (r.dbtSuccess) setBottomTab('dag')
     } finally { setIsRunning(false) }
   }, [handleReport])
 
   const handleTest = useCallback(async () => {
     setIsRunning(true)
+    setBottomTab('terminal')
     try {
       const r = await api.test()
       setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
@@ -126,17 +156,30 @@ export default function GameShell() {
 
   const handleBuild = useCallback(async () => {
     setIsRunning(true)
+    setBottomTab('terminal')
     try {
       const r = await api.build()
       setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
       await handleReport(r)
+      if (r.dbtSuccess) setBottomTab('dag')
     } finally { setIsRunning(false) }
   }, [handleReport])
 
   const handleSnapshot = useCallback(async () => {
     setIsRunning(true)
+    setBottomTab('terminal')
     try {
       const r = await api.snapshot()
+      setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
+      await handleReport(r)
+    } finally { setIsRunning(false) }
+  }, [handleReport])
+
+  const handleFreshness = useCallback(async () => {
+    setIsRunning(true)
+    setBottomTab('terminal')
+    try {
+      const r = await api.freshness()
       setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
       await handleReport(r)
     } finally { setIsRunning(false) }
@@ -174,21 +217,30 @@ export default function GameShell() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-void overflow-hidden">
-      <StatusBar status={status} isRunning={isRunning} onRun={handleRun} onReset={handleReset} onSelectLevel={loadLevel} />
+      <StatusBar
+        status={status}
+        isRunning={isRunning}
+        onRun={handleRun}
+        onTest={handleTest}
+        onBuild={handleBuild}
+        onSnapshot={handleSnapshot}
+        onFreshness={handleFreshness}
+        onReset={handleReset}
+        onSelectLevel={loadLevel}
+      />
 
-      <div className="flex-1 grid grid-cols-[220px_1fr_340px] overflow-hidden">
-        {/* Left sidebar: files + objectives */}
+      {/* dbt-Studio-style three-column layout:
+          Left  = file tree (browser).
+          Center = editor on top, lineage/preview/terminal tabs on bottom.
+          Right = comms + objectives (mission context). */}
+      <div className="flex-1 grid grid-cols-[220px_1fr_320px] overflow-hidden">
+        {/* Left: file tree */}
         <div className="border-r border-panel-border flex flex-col overflow-hidden">
-          <div className="flex-1 min-h-0 overflow-y-auto border-b border-panel-border">
-            <FileTree files={files} sources={sources} activeFile={activeFile}
-              onSelect={openFile} onPreviewSource={openSourcePreview} />
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <ObjectivePanel objectives={objectives} newlyCompleted={newlyCompleted} />
-          </div>
+          <FileTree files={files} sources={sources} activeFile={activeFile}
+            onSelect={openFile} onPreviewSource={openSourcePreview} />
         </div>
 
-        {/* Center: editor + DAG */}
+        {/* Center: editor + bottom tabs (DAG / Preview / Terminal) */}
         <div className="flex flex-col overflow-hidden">
           {previewData ? (
             <div className="flex-1 min-h-0">
@@ -221,26 +273,43 @@ export default function GameShell() {
               Select a file to edit
             </div>
           )}
-          {/* Bottom pane: DAG / Preview toggle */}
-          <div className="h-[180px] border-t border-panel-border">
-            <BottomPane dagKey={dagKey} previewModel={previewModel} onSelectModel={setPreviewModel} />
+          <div className="h-[260px] border-t border-panel-border">
+            <BottomPane
+              dagKey={dagKey}
+              previewModel={previewModel}
+              onSelectModel={setPreviewModel}
+              termOutput={termOutput}
+              termSuccess={termSuccess}
+              activeTab={bottomTab}
+              onTabChange={setBottomTab}
+            />
           </div>
         </div>
 
-        {/* Right: narrative + terminal */}
+        {/* Right: comms (top) + objectives (bottom) */}
         <div className="border-l border-panel-border flex flex-col overflow-hidden">
-          <div className="max-h-[45%] min-h-[120px] flex-shrink-0 overflow-hidden">
+          <div className="h-[40%] min-h-[160px] flex-shrink-0 overflow-hidden">
             <NarrativePanel narratives={narratives} />
           </div>
-          <div className="flex-1 min-h-0">
-            <TerminalPanel output={termOutput} success={termSuccess} isRunning={isRunning}
-              onRun={handleRun} onTest={handleTest} onBuild={handleBuild} onSnapshot={handleSnapshot} />
+          <div className="flex-1 min-h-0 overflow-y-auto border-t border-panel-border">
+            <ObjectivePanel objectives={objectives} newlyCompleted={newlyCompleted} />
           </div>
         </div>
       </div>
 
+      <NarrativeToast toasts={toasts} onDismiss={dismissToast} />
+
       {levelComplete && (
-        <LevelComplete badge={levelComplete.badge} xpEarned={levelComplete.xp} onDismiss={() => setLevelComplete(null)} />
+        <LevelComplete
+          badge={levelComplete.badge}
+          xpEarned={levelComplete.xp}
+          onDismiss={() => setLevelComplete(null)}
+          onNextMission={
+            status && status.level.id < 6
+              ? () => { setLevelComplete(null); loadLevel(status.level.id + 1) }
+              : undefined
+          }
+        />
       )}
     </div>
   )

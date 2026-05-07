@@ -110,6 +110,41 @@ def read_manifest() -> dict[str, ManifestNode] | None:
     return nodes
 
 
+@dataclass
+class FreshnessResult:
+    unique_id: str  # "source.<project>.<source>.<table>"
+    source_name: str
+    table_name: str
+    status: str  # "pass", "warn", "error", "runtime error"
+    max_loaded_at: str | None
+    message: str = ""
+
+
+def read_sources_freshness() -> list[FreshnessResult] | None:
+    """Parse target/sources.json from a `dbt source freshness` run."""
+    path = TARGET_DIR / "sources.json"
+    if not path.exists():
+        return None
+
+    data = json.loads(path.read_text())
+    out: list[FreshnessResult] = []
+    for r in data.get("results", []):
+        unique_id = r.get("unique_id", "")
+        # unique_id shape: "source.<project>.<source_name>.<table_name>"
+        parts = unique_id.split(".")
+        source_name = parts[2] if len(parts) >= 4 else ""
+        table_name = parts[3] if len(parts) >= 4 else ""
+        out.append(FreshnessResult(
+            unique_id=unique_id,
+            source_name=source_name,
+            table_name=table_name,
+            status=r.get("status", "runtime error"),
+            max_loaded_at=r.get("max_loaded_at"),
+            message=r.get("message", "") or "",
+        ))
+    return out
+
+
 def get_model_result(model_name: str) -> NodeRunResult | None:
     """Get the run result for a specific model by short name."""
     rr = read_run_results()

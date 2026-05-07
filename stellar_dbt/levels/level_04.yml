@@ -58,17 +58,31 @@ initial_files:
   models/marts/fct_shipment_log.sql: |
     -- fct_shipment_log.sql
     --
-    -- This model should be INCREMENTAL. Instead of rebuilding all data every run,
-    -- it should only process rows that are new or updated since the last run.
+    -- This model should be INCREMENTAL. Instead of rebuilding all data every
+    -- run, it should only process rows that are new or updated since the
+    -- last run.
     --
-    -- The objectives panel and comms will walk you through incremental models.
-    -- Key ideas: config block, unique key, and a filter for new rows only.
-    -- See dbt docs for syntax.
+    -- The shape of an incremental model in dbt:
+    --
+    --   {{ config(materialized='incremental', unique_key='shipment_id') }}
+    --
+    --   select * from {{ ref('stg_shipments') }}
+    --
+    --   {% if is_incremental() %}
+    --     where updated_at > (select max(updated_at) from {{ this }})
+    --   {% endif %}
+    --
+    -- What each piece does:
+    --   * config(...): materialized='incremental' means dbt does NOT rebuild
+    --     this table from scratch. unique_key='shipment_id' tells dbt to
+    --     upsert (update if exists, insert if new) by shipment_id.
+    --   * is_incremental() returns FALSE on the first run (full load) and
+    --     TRUE on every run after that.
+    --   * {{ this }} resolves to the model's own existing table — letting
+    --     you say "give me rows newer than what's already loaded".
     --
     -- The updated_at column in stg_shipments tracks when each row last changed.
-    -- Use it to filter for new/updated records.
-    --
-    -- Check the objectives panel for specifics.
+    -- Use it as the watermark in the WHERE clause.
 
     select 1 as placeholder
     -- Replace this with your incremental model
@@ -171,7 +185,7 @@ narrative_script:
   incremental_guide:
     id: incremental_guide
     character: R0-B3RT
-    message: "Open <highlight>fct_shipment_log.sql</highlight>. This will be an incremental model. Instead of scanning all data every run, it only picks up rows that changed since the last run. The comments in the file explain the key concepts. Start by adding the config block."
+    message: "Open <highlight>fct_shipment_log.sql</highlight>. The shape is: a config block declaring it incremental and naming the unique_key, then a select from {{ ref('stg_shipments') }}, then a Jinja <highlight>{% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}</highlight> filter. The first run loads everything. Every later run only picks up rows newer than what's already loaded. Start by adding the config block."
     priority: normal
 
   first_run:

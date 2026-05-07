@@ -18,19 +18,24 @@ export default function NarrativePanel({ narratives }: { narratives: NarrativeEv
   const [showLog, setShowLog] = useState(false)
   const prevLenRef = useRef(0)
   const [latestIndex, setLatestIndex] = useState(0)
+  const [hasUnread, setHasUnread] = useState(false)
 
   useEffect(() => {
     if (narratives.length > prevLenRef.current) {
-      // New messages arrived — show the first one of the new batch
+      // New messages arrived — show the first one of the new batch and flag unread
       setLatestIndex(prevLenRef.current)
       setShowLog(false)
+      setHasUnread(true)
     } else if (narratives.length < prevLenRef.current) {
       // Level reset — start from the beginning
       setLatestIndex(0)
       setShowLog(false)
+      setHasUnread(false)
     }
     prevLenRef.current = narratives.length
   }, [narratives.length])
+
+  const markRead = () => setHasUnread(false)
 
   if (!narratives.length) {
     return (
@@ -48,13 +53,26 @@ export default function NarrativePanel({ narratives }: { narratives: NarrativeEv
   const logCount = narratives.length
 
   return (
-    <div className="flex flex-col h-full border-b border-panel-border">
+    <div
+      className={`flex flex-col h-full border-b transition-colors ${
+        hasUnread ? 'border-stellar-amber/60' : 'border-panel-border'
+      }`}
+      onClick={markRead}
+    >
       {/* Header */}
       <div className="px-3 py-1.5 font-orbitron text-xs text-stellar-text-dim tracking-wider border-b border-panel-border bg-deep flex-shrink-0 flex items-center">
-        <span className="flex-1">COMMS</span>
+        <span className="flex-1 flex items-center gap-2">
+          COMMS
+          {hasUnread && (
+            <span
+              className="inline-block w-2 h-2 rounded-full bg-stellar-amber animate-pulse-glow"
+              aria-label="new transmission"
+            />
+          )}
+        </span>
         {logCount > 1 && (
           <button
-            onClick={() => setShowLog(!showLog)}
+            onClick={() => { markRead(); setShowLog(!showLog) }}
             className={`font-mono-tech text-[10px] px-1.5 py-0.5 rounded transition-colors ${
               showLog
                 ? 'bg-accent-dim text-accent'

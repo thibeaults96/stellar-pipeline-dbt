@@ -31,9 +31,30 @@ const STYLE_MAP: Record<string, string> = {
   amber: "text-stellar-amber",
 }
 
+type Star = {
+  left: string; top: string; width: string; height: string
+  animationDelay: string; animationDuration: string; opacity: number
+}
+
 export default function StartMenu({ onStart }: { onStart: () => void }) {
   const [visibleLines, setVisibleLines] = useState(0)
   const [showButton, setShowButton] = useState(false)
+  // Generate starfield only on the client to avoid SSR/CSR hydration mismatch.
+  const [stars, setStars] = useState<Star[]>([])
+
+  useEffect(() => {
+    setStars(
+      Array.from({ length: 40 }, () => ({
+        left: `${Math.random() * 100}%`,
+        top: `${Math.random() * 100}%`,
+        width: `${1 + Math.random() * 2}px`,
+        height: `${1 + Math.random() * 2}px`,
+        animationDelay: `${Math.random() * 4}s`,
+        animationDuration: `${2 + Math.random() * 3}s`,
+        opacity: 0.3 + Math.random() * 0.5,
+      })),
+    )
+  }, [])
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = []
@@ -64,19 +85,11 @@ export default function StartMenu({ onStart }: { onStart: () => void }) {
     >
       {/* Starfield background effect */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {Array.from({ length: 40 }).map((_, i) => (
+        {stars.map((s, i) => (
           <div
             key={i}
             className="absolute w-px h-px bg-stellar-text-dim rounded-full animate-pulse-glow"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              width: `${1 + Math.random() * 2}px`,
-              height: `${1 + Math.random() * 2}px`,
-              animationDelay: `${Math.random() * 4}s`,
-              animationDuration: `${2 + Math.random() * 3}s`,
-              opacity: 0.3 + Math.random() * 0.5,
-            }}
+            style={s}
           />
         ))}
       </div>

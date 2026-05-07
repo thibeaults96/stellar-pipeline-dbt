@@ -36,10 +36,16 @@ class GameEngine:
         state.current_level = level_id
         state.run_count = 0
         state.test_count = 0
-        state.completed_objectives[level_id] = []
-        state.fired_triggers[level_id] = []
-        if level_id in state.completed_levels:
-            state.completed_levels.remove(level_id)
+        if level_id not in state.completed_levels:
+            # Fresh or in-progress level — clear progress so the player can
+            # work the objectives without stale state interfering.
+            state.completed_objectives[level_id] = []
+            state.fired_triggers[level_id] = []
+        # If the level is already in completed_levels we deliberately keep
+        # completed_objectives and fired_triggers so navigating back to a
+        # finished level keeps it green and doesn't require redoing work.
+        # /api/reset removes the level from completed_levels before calling
+        # start_level, so reset still produces a clean wipe.
 
         # Fire LEVEL_START narrative
         fired = set(state.fired_triggers.get(level_id, []))
@@ -65,11 +71,13 @@ class GameEngine:
 
         events: list[str] = []
         rr = artifact_reader.read_run_results()
-        if rr and rr.all_models_passed:
-            events.append("RUN_SUCCESS")
-        else:
+        dbt_passed = bool(rr and rr.all_models_passed)
+        if not dbt_passed:
             events.append("RUN_FAILURE")
-        if state.run_count == 1:
+        # FIRST_RUN only fires on a successful first run. Levels hook this
+        # event to introduce post-build observations ("models built — now look
+        # at the data"), which read as gaslighting if dbt actually errored.
+        if state.run_count == 1 and dbt_passed:
             events.append("FIRST_RUN")
 
         # Check for hardcoded refs in mart files (only fire if they actually
@@ -88,6 +96,14 @@ class GameEngine:
         # Check objectives and detect newly completed
         report.objectives = GameEngine._check_all(level, state)
         report.newly_completed = GameEngine._update_completed(level, state, report.objectives)
+
+        # Gate RUN_SUCCESS on actual progress: a successful dbt build with the
+        # placeholder template still passes, and we don't want congratulatory
+        # narratives ("Models compiled, looking good") to fire when the
+        # player hasn't met any objectives yet.
+        any_complete = any(ok for _, ok, _ in report.objectives)
+        if dbt_passed and any_complete:
+            events.append("RUN_SUCCESS")
 
         # Fire per-objective completion events for narrative triggers
         for obj_id in report.newly_completed:
@@ -183,15 +199,15 @@ class GameEngine:
 
         events: list[str] = []
         rr = artifact_reader.read_run_results()
-        if rr and rr.all_models_passed:
-            events.append("RUN_SUCCESS")
-        else:
+        dbt_passed = bool(rr and rr.all_models_passed)
+        if not dbt_passed:
             events.append("RUN_FAILURE")
         if rr and rr.has_test_failures:
             events.append("TEST_FAILURE")
         elif rr and rr.all_tests_passed:
             events.append("TEST_SUCCESS")
-        if state.run_count == 1:
+        # See run() for why FIRST_RUN is gated on dbt success.
+        if state.run_count == 1 and dbt_passed:
             events.append("FIRST_RUN")
 
         for obj in level.objectives:
@@ -207,6 +223,11 @@ class GameEngine:
 
         report.objectives = GameEngine._check_all(level, state)
         report.newly_completed = GameEngine._update_completed(level, state, report.objectives)
+
+        # See run() for why RUN_SUCCESS is gated on actual objective progress.
+        any_complete = any(ok for _, ok, _ in report.objectives)
+        if dbt_passed and any_complete:
+            events.append("RUN_SUCCESS")
 
         for obj_id in report.newly_completed:
             events.append(f"OBJECTIVE_{obj_id}_COMPLETE")
@@ -246,6 +267,57 @@ class GameEngine:
 
         events: list[str] = []
         events.append("SNAPSHOT_RUN")
+
+        report = ActionReport(
+            dbt_output=result.stdout + result.stderr,
+            dbt_success=result.success,
+        )
+
+        report.objectives = GameEngine._check_all(level, state)
+        report.newly_completed = GameEngine._update_completed(level, state, report.objectives)
+
+        for obj_id in report.newly_completed:
+            events.append(f"OBJECTIVE_{obj_id}_COMPLETE")
+
+        if GameEngine._all_complete(level, state):
+            events.append("LEVEL_COMPLETE")
+            report.level_complete = True
+            report.xp_earned = level.xp_reward
+            state.total_xp += level.xp_reward
+            if level.id not in state.completed_levels:
+                state.completed_levels.append(level.id)
+            badge = EarnedBadge(
+                id=level.badge.id, emoji=level.badge.emoji,
+                name=level.badge.name, level_id=level.id,
+            )
+            state.earned_badges.append(badge)
+            report.badge = badge
+
+        fired = set(state.fired_triggers.get(level.id, []))
+        narratives, fired = narrative_engine.process(
+            events, level.narrative_triggers, level.narrative_script, fired,
+        )
+        state.fired_triggers[level.id] = list(fired)
+        state.pending_narratives = [n.model_dump() for n in narratives]
+        report.narratives = narratives
+
+        save_state(state)
+        return report
+
+    @staticmethod
+    def freshness() -> ActionReport:
+        """Run `dbt source freshness`. Best teaching tool for this — if the
+        player's freshness config is wrong, dbt itself will say why."""
+        state = load_state()
+        level = load_level(state.current_level)
+
+        result = dbt_runner.source_freshness()
+
+        events: list[str] = ["FRESHNESS_RUN"]
+        if result.success:
+            events.append("FRESHNESS_SUCCESS")
+        else:
+            events.append("FRESHNESS_FAILURE")
 
         report = ActionReport(
             dbt_output=result.stdout + result.stderr,
@@ -325,9 +397,20 @@ class GameEngine:
                 result = objective_checker.check(obj)
                 results.append((obj, result.passed, result.reason))
 
-        # "all_models_pass" should only complete when all other objectives are done
-        # (prevents auto-passing on skeleton code that happens to compile)
-        other_all_done = all(passed for obj, passed, _ in results if obj.check.type != "all_models_pass")
+        # "all_models_pass" should only complete once the editor work is done,
+        # so skeleton code that happens to compile doesn't auto-pass it. But
+        # don't gate on action-only objectives (dbt test / dbt snapshot) —
+        # those represent separate user actions and the player completes them
+        # *after* a successful dbt run. If we gated on those, all_green would
+        # flip back to False after a snapshot run wipes run_results.json of
+        # model entries, and the player would have to dbt run a second time.
+        action_only_types = {"tests_ran_with_failures", "snapshot_ran"}
+        other_all_done = all(
+            passed
+            for obj, passed, _ in results
+            if obj.check.type != "all_models_pass"
+            and obj.check.type not in action_only_types
+        )
         for i, (obj, passed, reason) in enumerate(results):
             if obj.check.type == "all_models_pass" and passed and not other_all_done:
                 results[i] = (obj, False, "Models compile, but complete the other objectives first, then run again.")

@@ -172,10 +172,10 @@ objectives:
       type: tests_ran_with_failures
 
   - id: configure_freshness
-    label: "Add freshness monitoring to raw_shipments in federation_sources.yml, warn after 24 hours, error after 48 hours"
-    hint: "In federation_sources.yml under raw_shipments, add a freshness: block with warn_after: {count: 24, period: hour} and error_after: {count: 48, period: hour}. This tells dbt to flag when source data goes stale."
+    label: "Configure freshness on raw_shipments (warn after 24h, error after 48h) and run dbt freshness to verify"
+    hint: "In federation_sources.yml, give raw_shipments a freshness: block with warn_after: {count: 24, period: hour} and error_after: {count: 48, period: hour}. Then click `dbt freshness` in the toolbar — if dbt accepts the config and runs the check, this objective passes. If your YAML is wrong, dbt will tell you exactly what's off in the terminal."
     check:
-      type: has_freshness_config
+      type: source_freshness_ran
       source_name: federation
       table_name: raw_shipments
 
@@ -225,6 +225,17 @@ narrative_triggers:
   - id: nt_freshness_guide
     event: OBJECTIVE_run_tests_COMPLETE
     narrative_key: freshness_guide
+    once: true
+
+  - id: nt_freshness_command_explain
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: freshness_command_explain
+    once: true
+
+  # ── If freshness fails (config issue), explain how to read it ──
+  - id: nt_freshness_failure
+    event: FRESHNESS_FAILURE
+    narrative_key: freshness_failure
     once: true
 
   # ── Final run ──
@@ -279,8 +290,20 @@ narrative_script:
   freshness_guide:
     id: freshness_guide
     character: R0-B3RT
-    message: "One more thing. Open <highlight>federation_sources.yml</highlight> and look at the raw_shipments source. There's no freshness monitoring on it. If the source data stops updating, nobody finds out until reports start looking wrong. Add a <highlight>freshness:</highlight> block with warn_after and error_after thresholds so dbt can flag stale data."
+    message: "One more thing. Open <highlight>federation_sources.yml</highlight> and look at the raw_shipments source. There's no freshness monitoring on it. If the source data stops updating, nobody finds out until reports start looking wrong. Add a <highlight>freshness:</highlight> block (top-level on the table, or under a `config:` block — both work) with <highlight>warn_after</highlight> and <highlight>error_after</highlight> thresholds so dbt can flag stale data. Then click <highlight>dbt freshness</highlight> in the toolbar — that's how you actually run the check."
     priority: normal
+
+  freshness_command_explain:
+    id: freshness_command_explain
+    character: R0-B3RT
+    message: "Quick context on the command: <highlight>dbt source freshness</highlight> runs a SQL query against each configured source — basically <highlight>select max(loaded_at_field) from the_source</highlight> — and compares the age of the newest row to your warn_after / error_after thresholds. If your config is structurally valid, dbt actually executes the check and reports pass / warn / error. If it's malformed, dbt errors out with a useful message. That's why we wire it up: you don't have to guess if the YAML is right, dbt tells you."
+    priority: normal
+
+  freshness_failure:
+    id: freshness_failure
+    character: R0-B3RT
+    message: "Freshness errored out. That means the YAML didn't parse the way dbt expected. Read the error in the terminal — it'll point at the exact line. Common issues: missing <highlight>loaded_at_field</highlight>, wrong period name (it has to be minute / hour / day), or warn_after / error_after pointing at a scalar instead of a {count, period} mapping."
+    priority: high
 
   final_run_guide:
     id: final_run_guide

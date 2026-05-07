@@ -87,4 +87,8 @@ def snapshot() -> DbtResult:
 
 
 def source_freshness() -> DbtResult:
+    """Seed then run source freshness — needs the source table to exist."""
+    seed_result = _run_dbt("seed")
+    if not seed_result.success:
+        return seed_result
     return _run_dbt("source", "freshness")

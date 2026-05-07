@@ -77,6 +77,12 @@ async def snapshot_dbt():
     return serialize_report(report)
 
 
+@app.post("/api/freshness")
+async def freshness_dbt():
+    report = GameEngine.freshness()
+    return serialize_report(report)
+
+
 @app.post("/api/check")
 async def check_objectives():
     report = GameEngine.check_objectives()

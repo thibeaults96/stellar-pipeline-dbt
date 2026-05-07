@@ -62,23 +62,34 @@ initial_files:
     -- This is a MACRO file. Macros are reusable Jinja functions that you can
     -- call from any model. They live in the macros/ folder.
     --
-    -- Your job: create a macro called "flag_suspicious" that takes a column name
-    -- for the result and returns a CASE WHEN expression that flags suspicious
-    -- shipments.
+    -- Your job: create a macro called flag_suspicious that takes a column
+    -- name for the result and returns a CASE WHEN expression that flags
+    -- suspicious shipments.
     --
     -- A shipment is suspicious if ANY of these are true:
     --   - voss_flag = 1
     --   - dest_is_federation = false
     --   - cargo_type = 'classified'
     --
-    -- Macro syntax (wrap in curly-brace-percent tags):
-    --   macro macro_name(parameter)
-    --     ... SQL that gets inserted where the macro is called ...
-    --   endmacro
+    -- Macro syntax:
     --
-    -- Then in a model you call it with: macro_name('column_name') in double curly braces
+    --   {% macro flag_suspicious(column_name) %}
+    --       case
+    --           when ... then 1
+    --           else 0
+    --       end as {{ column_name }}
+    --   {% endmacro %}
     --
-    -- Check the objectives panel and comms for the exact syntax.
+    -- Notes on the delimiters:
+    --   {% ... %} wraps Jinja control statements (macro, endmacro, if, for).
+    --   {{ ... }} substitutes a value into the rendered SQL — here, the
+    --   parameter `column_name` becomes the alias on the resulting column.
+    --
+    -- Calling it from a model looks like:
+    --
+    --   {{ flag_suspicious('is_suspicious') }}
+    --
+    -- Fill in the WHEN conditions and you're good to go.
 
   models/marts/fct_voss_investigation.sql: |
     -- fct_voss_investigation.sql
@@ -113,8 +124,10 @@ objectives:
   - id: create_macro
     label: "Create a flag_suspicious macro in macros/flag_suspicious.sql"
     hint: "Define the macro with: {% macro flag_suspicious(column_name) %} case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }} {% endmacro %}"
+    # Use *_active_sql so the inline example syntax in `-- comments` doesn't
+    # satisfy this check before the player writes any actual code.
     check:
-      type: file_contains
+      type: file_contains_active_sql
       filename: macros/flag_suspicious.sql
       pattern: "macro\\s+flag_suspicious"
 
@@ -122,7 +135,7 @@ objectives:
     label: "The macro should contain the CASE WHEN logic"
     hint: "Inside the macro, write: case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }}"
     check:
-      type: file_contains
+      type: file_contains_active_sql
       filename: macros/flag_suspicious.sql
       pattern: "case\\s+when[\\s\\S]*voss_flag[\\s\\S]*then\\s+1[\\s\\S]*else\\s+0[\\s\\S]*end"
 

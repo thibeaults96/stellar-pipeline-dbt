@@ -56,6 +56,7 @@ export const api = {
   test: (): Promise<ActionReport> => post('/test'),
   build: (): Promise<ActionReport> => post('/build'),
   snapshot: (): Promise<ActionReport> => post('/snapshot'),
+  freshness: (): Promise<ActionReport> => post('/freshness'),
   reset: (): Promise<ActionReport> => post('/reset'),
   listFiles: (): Promise<FileEntry[]> => get('/files'),
   getFile: (path: string): Promise<FileContent> => get(`/files/${path}`),

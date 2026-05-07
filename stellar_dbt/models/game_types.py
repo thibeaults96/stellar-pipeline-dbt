@@ -1,5 +1,5 @@
-"""Game data models for Stellar Pipeline CLI."""
-from __future__ import annotations
+"""Game ata models for Stellar Pipeline CLI."""
+from __fudture__ import annotations
 
 from typing import Any, Literal, Optional, Union
 from pydantic import BaseModel, Field
@@ -55,6 +55,15 @@ class ArtifactModelPasses(BaseModel):
 class ArtifactTestRanWithFailures(BaseModel):
     type: Literal["tests_ran_with_failures"] = "tests_ran_with_failures"
 
+class SourceFreshnessRan(BaseModel):
+    """Check that `dbt source freshness` actually ran against this source —
+    proves the freshness config is structurally valid because dbt accepted
+    and executed it. Status of pass/warn/error is fine; only `runtime error`
+    counts as a failure (config or query was bad)."""
+    type: Literal["source_freshness_ran"] = "source_freshness_ran"
+    source_name: str
+    table_name: str
+
 # DuckDB query check
 class DuckDBColumnExists(BaseModel):
     type: Literal["duckdb_column_exists"] = "duckdb_column_exists"
@@ -92,6 +101,7 @@ ObjectiveCheck = Union[
     HasColumnAlias, HasRefCall, FileContainsActiveSql, FileContains,
     NoHardcodedRefs, HasTest, HasFreshnessConfig,
     ArtifactAllModelsPass, ArtifactModelPasses, ArtifactTestRanWithFailures,
+    SourceFreshnessRan,
     DuckDBColumnExists, DuckDBColumnsExist, DuckDBColumnValuesCheck, DuckDBRowCount, SnapshotRan,
 ]
 

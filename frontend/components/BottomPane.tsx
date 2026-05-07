@@ -4,20 +4,29 @@ import { useState, useEffect } from 'react'
 import { api } from '@/hooks/useGameApi'
 import DagView from './DagView'
 import ResultsPreview from './ResultsPreview'
+import TerminalPanel from './TerminalPanel'
+
+type Tab = 'dag' | 'preview' | 'terminal'
 
 export default function BottomPane({
   dagKey,
   previewModel,
   onSelectModel,
+  termOutput,
+  termSuccess,
+  activeTab,
+  onTabChange,
 }: {
   dagKey: number
   previewModel: string
   onSelectModel: (name: string) => void
+  termOutput: string
+  termSuccess: boolean | null
+  activeTab: Tab
+  onTabChange: (tab: Tab) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'dag' | 'preview'>('dag')
   const [modelNames, setModelNames] = useState<string[]>([])
 
-  // Fetch model names from manifest
   useEffect(() => {
     api.getManifest()
       .then((data: { nodes: { name: string; type: string }[] }) => {
@@ -33,28 +42,23 @@ export default function BottomPane({
       .catch(() => {})
   }, [dagKey, previewModel, onSelectModel])
 
+  const tabClass = (t: Tab) =>
+    `px-3 py-1.5 font-orbitron text-xs tracking-wider transition-colors ${
+      activeTab === t
+        ? 'text-accent border-b-2 border-accent bg-void'
+        : 'text-stellar-text-dim hover:text-stellar-text'
+    }`
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center bg-deep border-b border-panel-border flex-shrink-0">
-        <button
-          onClick={() => setActiveTab('dag')}
-          className={`px-3 py-1.5 font-orbitron text-xs tracking-wider transition-colors ${
-            activeTab === 'dag'
-              ? 'text-accent border-b-2 border-accent bg-void'
-              : 'text-stellar-text-dim hover:text-stellar-text'
-          }`}
-        >
-          DAG
-        </button>
-        <button
-          onClick={() => setActiveTab('preview')}
-          className={`px-3 py-1.5 font-orbitron text-xs tracking-wider transition-colors ${
-            activeTab === 'preview'
-              ? 'text-accent border-b-2 border-accent bg-void'
-              : 'text-stellar-text-dim hover:text-stellar-text'
-          }`}
-        >
-          PREVIEW
+        <button onClick={() => onTabChange('dag')} className={tabClass('dag')}>DAG</button>
+        <button onClick={() => onTabChange('preview')} className={tabClass('preview')}>PREVIEW</button>
+        <button onClick={() => onTabChange('terminal')} className={tabClass('terminal')}>
+          TERMINAL
+          {termSuccess === false && (
+            <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-stellar-red" />
+          )}
         </button>
         {activeTab === 'preview' && modelNames.length > 0 && (
           <div className="flex items-center ml-2 gap-1">
@@ -75,10 +79,10 @@ export default function BottomPane({
         )}
       </div>
       <div className="flex-1 min-h-0 bg-void">
-        {activeTab === 'dag' ? (
-          <DagView key={dagKey} />
-        ) : (
-          <ResultsPreview key={previewModel + dagKey} modelName={previewModel} />
+        {activeTab === 'dag' && <DagView key={dagKey} />}
+        {activeTab === 'preview' && <ResultsPreview key={previewModel + dagKey} modelName={previewModel} />}
+        {activeTab === 'terminal' && (
+          <TerminalPanel output={termOutput} success={termSuccess} />
         )}
       </div>
     </div>

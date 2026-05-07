@@ -1,17 +1,18 @@
 -- fct_trade_routes.sql
+-- Mart model: combines staging models into something analysts can actually use.
+--
+-- Quick refresher on ref() vs source():
+--   source() pulls from raw external tables (used in staging models)
+--   ref() pulls from other dbt models (used here, in marts)
+--
+-- Example:  select * from  ref('stg_shipments')  (wrap in double curly braces)
+--
+-- What to do:
+--   1. Use ref() to pull from stg_shipments and stg_planets
+--   2. Join them so each shipment gets its origin planet name
+--   3. Add a summary with count and total mass per origin planet
+--
+-- Check the objectives panel for the specifics.
 
-with shipments as (
-    select * from {{ ref('stg_shipments') }}
-), planets as (
-    select * from {{ ref('stg_planets') }}
-), routes as (
-    select s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
-        s.departed_at, s.arrived_at, s.voss_flag,
-        origin.planet_name as origin_planet_name,
-        dest.planet_name as destination_planet_name,
-        dest.is_federation_member as dest_is_federation
-    from shipments s
-    left join planets origin on s.origin_planet_id = origin.planet_id
-    left join planets dest on s.destination_planet_id = dest.planet_id
-)
-select * from routes
+select 1 as placeholder
+-- Replace this with your query

@@ -9,3 +9,17 @@ test-paths: ["tests"]
 snapshot-paths: ["snapshots"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
+
+# Force the timestamp-shaped columns in raw_shipments to load as VARCHAR.
+# dbt-duckdb auto-infers ISO-8601 strings as TIMESTAMP at seed time, which
+# would let players "pass" the L1 cast objective without writing any cast()
+# calls (the column type already matches). Seeding these as text makes the
+# cast meaningful, so we can verify the staging model's resulting column
+# type instead of grepping for a specific syntax. Players are then free to
+# use either `cast(x as timestamp)` or `x::timestamp`.
+seeds:
+  stellar_pipeline:
+    raw_shipments:
+      +column_types:
+        departed_at: VARCHAR
+        arrived_at: VARCHAR

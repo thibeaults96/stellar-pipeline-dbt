@@ -134,6 +134,8 @@ def reset():
     state.fired_triggers.pop(level_id, None)
     state.run_count = 0
     state.test_count = 0
+    if level_id in state.completed_levels:
+        state.completed_levels.remove(level_id)
     save_state(state)
     # Re-apply level files
     report = GameEngine.start_level(level_id)

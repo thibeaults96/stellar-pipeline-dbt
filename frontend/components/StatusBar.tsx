@@ -11,11 +11,15 @@ const LEVELS = [
 ]
 
 export default function StatusBar({
-  status, isRunning, onRun, onReset, onSelectLevel,
+  status, isRunning, onRun, onTest, onBuild, onSnapshot, onFreshness, onReset, onSelectLevel,
 }: {
   status: GameStatus | null
   isRunning: boolean
   onRun: () => void
+  onTest: () => void
+  onBuild: () => void
+  onSnapshot: () => void
+  onFreshness: () => void
   onReset: () => void
   onSelectLevel: (id: number) => void
 }) {
@@ -32,10 +36,23 @@ export default function StatusBar({
         {LEVELS.map(l => {
           const isCurrent = status.level.id === l.id
           const isDone = status.completedLevels.includes(l.id)
+          const handleClick = () => {
+            if (isCurrent) return
+            // Re-entering a completed level rewrites its files from the level
+            // template, which silently overwrites whatever the player wrote.
+            // Confirm so a stray click doesn't destroy hours of work.
+            if (isDone) {
+              const ok = window.confirm(
+                `Reload Level ${l.id}? Your saved SQL for this level will be overwritten with the starter template.`,
+              )
+              if (!ok) return
+            }
+            onSelectLevel(l.id)
+          }
           return (
             <button
               key={l.id}
-              onClick={() => onSelectLevel(l.id)}
+              onClick={handleClick}
               disabled={isRunning}
               className={`px-2 py-1 font-mono-tech text-xs rounded transition-colors ${
                 isCurrent
@@ -73,16 +90,47 @@ export default function StatusBar({
         title="dbt Documentation">
         dbt docs ↗
       </a>
-      <button onClick={onReset} disabled={isRunning}
+      <button
+        onClick={() => {
+          // Reset wipes the player's SQL, the DuckDB, and progress for this
+          // level. One stray click would destroy work — confirm.
+          const ok = window.confirm(
+            `Reset Level ${status.level.id}? This restores the starter files and clears your progress for this level.`,
+          )
+          if (ok) onReset()
+        }}
+        disabled={isRunning}
         className="px-2 py-1.5 text-stellar-text-dim font-mono-tech text-xs border border-panel-border rounded hover:border-stellar-red hover:text-stellar-red transition-colors disabled:opacity-50"
         title="Reset level">
         ↺
       </button>
-      <button onClick={onRun} disabled={isRunning}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-dim border border-accent text-accent font-orbitron text-xs rounded hover:bg-accent hover:text-void transition-colors disabled:opacity-50">
-        {isRunning ? <span className="animate-spin">⟳</span> : <span>▶</span>}
-        dbt run
-      </button>
+      <div className="flex items-center gap-1">
+        <button onClick={onRun} disabled={isRunning}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-dim border border-accent text-accent font-orbitron text-xs rounded hover:bg-accent hover:text-void transition-colors disabled:opacity-50">
+          {isRunning ? <span className="animate-spin">⟳</span> : <span>▶</span>}
+          dbt run
+        </button>
+        <button onClick={onTest} disabled={isRunning}
+          className="px-2.5 py-1.5 font-mono-tech text-xs border border-panel-border rounded text-stellar-text hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+          title="Run dbt tests">
+          dbt test
+        </button>
+        <button onClick={onBuild} disabled={isRunning}
+          className="px-2.5 py-1.5 font-mono-tech text-xs border border-panel-border rounded text-stellar-text hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+          title="dbt build (run + test in one)">
+          dbt build
+        </button>
+        <button onClick={onSnapshot} disabled={isRunning}
+          className="px-2.5 py-1.5 font-mono-tech text-xs border border-panel-border rounded text-stellar-text hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+          title="Run dbt snapshots">
+          dbt snapshot
+        </button>
+        <button onClick={onFreshness} disabled={isRunning}
+          className="px-2.5 py-1.5 font-mono-tech text-xs border border-panel-border rounded text-stellar-text hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+          title="dbt source freshness — checks each configured source against its warn/error thresholds">
+          dbt freshness
+        </button>
+      </div>
     </div>
   )
 }

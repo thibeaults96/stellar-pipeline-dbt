@@ -57,27 +57,21 @@ initial_files:
     select * from routes
 
   snapshots/shipment_snapshots.yml: |
-    # shipment_snapshots.yml
+    # Snapshot: track how shipment rows change over time.
     #
-    # SNAPSHOTS track how rows change over time. Unlike regular models that
-    # always show current state, a snapshot keeps a history of every change.
-    #
-    # In dbt, snapshots are defined in YAML files in the snapshots/ folder.
-    # Each snapshot needs:
-    #   - name: what to call the snapshot table
-    #   - relation: which model or source to snapshot (using ref() or source())
-    #   - config: how to detect changes
-    # See dbt docs for syntax.
-    #
-    # The 'timestamp' strategy compares the updated_at column to detect changes.
-    # The 'unique_key' tells dbt which column identifies each row.
-    #
-    # dbt automatically adds tracking columns:
-    #   dbt_valid_from  — when this version of the row became active
-    #   dbt_valid_to    — when it was replaced (NULL if still current)
-    #   dbt_scd_id      — unique ID for each version
-    #
-    # Check the objectives panel for specifics.
+    # Fill in each TODO below — every line maps to an objective in the panel.
+    # On first 'dbt snapshot' run, dbt captures the current state. On later
+    # runs, it adds new versions of changed rows and stamps the old ones with
+    # dbt_valid_to. The dbt_valid_from / dbt_valid_to / dbt_scd_id columns
+    # are added automatically.
+
+    snapshots:
+      - name:                    # TODO: name this snapshot (check objectives)
+        relation:                # TODO: which model to track? use ref('...')
+        config:
+          strategy:              # TODO: how should dbt detect changes? (hint: 'timestamp')
+          unique_key:            # TODO: which column identifies each row?
+          updated_at:            # TODO: which column tracks when rows change?
 
   models/sources/federation_sources.yml: |
     version: 2

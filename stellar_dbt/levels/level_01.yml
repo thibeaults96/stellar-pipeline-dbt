@@ -71,7 +71,7 @@ initial_files:
     --
     -- What to do:
     --   1. Use ref() to pull from stg_shipments and stg_planets
-    --   2. Join them so each shipment gets it's origin planet name
+    --   2. Join them so each shipment gets its origin planet name
     --   3. Add a summary with count and total mass per origin planet
     --
     -- Check the objectives panel for the specifics.
@@ -91,7 +91,11 @@ objectives:
 
   - id: cast_timestamps
     label: "Cast departed_at and arrived_at as timestamps"
-    hint: "Use cast(departed_at as timestamp) as departed_at. Do the same for arrived_at."
+    hint: "Either form works: `cast(departed_at as timestamp) as departed_at` or `departed_at::timestamp`. Do the same for arrived_at."
+    # The seed forces these columns to load as VARCHAR (see dbt_project.yml),
+    # so the staging model only ends up with TIMESTAMP columns if the player
+    # actually casts. We check the resulting column types in DuckDB rather
+    # than the SQL syntax, so any valid cast form is accepted.
     check:
       type: duckdb_columns_exist
       table: stg_shipments

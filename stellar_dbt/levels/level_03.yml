@@ -78,10 +78,15 @@ initial_files:
           - name: shipment_id
             # What is this column? Add a description.
           - name: cargo_type
-            # What values are valid here? Check the source data. Do not include 'unknown_type' in the list of valid values.
-            # see dbt docs for syntax.
+            # Add an accepted_values test here.
+            # Valid cargo types (from the source data):
+            #   supplies, equipment, humanitarian_aid, fuel_cells, medical
+            # Do NOT include UNKNOWN_TYPE — that is invalid data the test
+            # should catch on the next dbt test run.
           - name: status
-            # What are the possible status values?
+            # Add an accepted_values test here.
+            # The staging model lowercases status, so the valid values are
+            # 'delivered' and 'in_transit' (lowercase).
 
   models/marts/_fct_trade_routes.yml: |
     version: 2
@@ -116,18 +121,23 @@ objectives:
   - id: add_status_accepted_values
     label: "Add an accepted_values test on the status column"
     hint: "Under the status column in _stg_shipments.yml, add a tests section with accepted_values and a values list like ['delivered', 'in_transit']."
+    # Pattern requires: '- accepted_values:' (dash needed for list-item syntax),
+    # then a 'values:' key, then either an inline non-empty list `[a, b]` or a
+    # block list with at least one '- item'. The (?:(?!\n\s*-\s+name:)[\s\S])
+    # gap forbids crossing into the next column's section, so a malformed
+    # status block can't borrow a well-formed neighbor's accepted_values.
     check:
       type: file_contains
       filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*status[\\s\\S]*?tests:[\\s\\S]*?accepted_values"
+      pattern: "name:\\s*status(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?tests:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?-\\s*accepted_values:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?values:\\s*(?:\\[[^\\]]*\\S[^\\]]*\\]|(?:\\r?\\n\\s+-\\s+\\S+)+)"
 
   - id: add_cargo_type_accepted_values
     label: "Add an accepted_values test on cargo_type"
-    hint: "Check the source data for what cargo types exist. Add accepted_values with those types. The new shipment SHP-007 has an UNKNOWN_TYPE that should fail the test."
+    hint: "Valid cargo types in this dataset: supplies, equipment, humanitarian_aid, fuel_cells, medical. Do NOT include UNKNOWN_TYPE — the test should catch SHP-007 as invalid."
     check:
       type: file_contains
       filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*cargo_type[\\s\\S]*?tests:[\\s\\S]*?accepted_values"
+      pattern: "name:\\s*cargo_type(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?tests:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?-\\s*accepted_values:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?values:\\s*(?:\\[[^\\]]*\\S[^\\]]*\\]|(?:\\r?\\n\\s+-\\s+\\S+)+)"
 
   # Phase 3: Document the mart
   - id: describe_mart_model
@@ -226,7 +236,7 @@ narrative_script:
   accepted_values_guide:
     id: accepted_values_guide
     character: R0-B3RT
-    message: "Time for <highlight>accepted_values</highlight> tests. These check that a column only contains values from a specific list. In _stg_shipments.yml, add a tests section under the status column with accepted_values and the valid values. Do the same for cargo_type. Check the source data preview to see what values exist."
+    message: "Time for <highlight>accepted_values</highlight> tests. These check a column only contains values from a specific list. Add one under <highlight>status</highlight> (valid values are <highlight>'delivered'</highlight> and <highlight>'in_transit'</highlight> — lowercase, since the staging model already normalizes them). Then add one under <highlight>cargo_type</highlight>. The valid cargo types are supplies, equipment, humanitarian_aid, fuel_cells, and medical. <highlight>Do NOT include UNKNOWN_TYPE</highlight> — that's the bad data we want the test to catch."
     priority: normal
 
   mart_doc_guide:
