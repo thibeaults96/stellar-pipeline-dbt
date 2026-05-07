@@ -1,5 +1,5 @@
 """Game ata models for Stellar Pipeline CLI."""
-from __fudture__ import annotations
+from __future__ import annotations
 
 from typing import Any, Literal, Optional, Union
 from pydantic import BaseModel, Field
