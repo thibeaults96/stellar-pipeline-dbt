@@ -218,8 +218,13 @@ narrative_triggers:
 
   # ── Both refs done, guide join/aggregation ──
   - id: nt_ref_done
-    event: OBJECTIVE_ref_planets_in_mart_COMPLETE
+    event:
+      - OBJECTIVE_ref_planets_in_mart_COMPLETE
+      - OBJECTIVE_ref_shipments_in_mart_COMPLETE
     narrative_key: join_guide
+    requires:
+      - ref_planets_in_mart
+      - ref_shipments_in_mart
     once: true
 
   # ── Phase 3: all green ──
@@ -290,7 +295,7 @@ narrative_script:
   join_guide:
     id: join_guide
     character: R0-B3RT
-    message: "Nice, both refs are wired up. Next step is joining the data. Each shipment has an <highlight>origin_planet_id</highlight> and <highlight>destination_planet_id</highlight> that map to <highlight>planet_id</highlight> in stg_planets. You'll need to join twice to get both planet names. Then for the morning report we need a summary, <highlight>count(*) as shipment_count</highlight> and <highlight>sum(cargo_mass_kg) as total_mass_kg</highlight> grouped by origin planet."
+    message: "Nice, both refs are wired up. Next step is joining the data. Each shipment has an <highlight>origin_planet_id</highlight> that maps to <highlight>planet_id</highlight> in stg_planets — join on that to pull in the origin planet name. Then for the morning report we need a summary, <highlight>count(*) as shipment_count</highlight> and <highlight>sum(cargo_mass_kg) as total_mass_kg</highlight> grouped by origin planet."
     priority: normal
 
   first_success:

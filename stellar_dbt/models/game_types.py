@@ -220,9 +220,13 @@ class NarrativeEvent(BaseModel):
 
 class NarrativeTrigger(BaseModel):
     id: str
-    event: str
+    event: Union[str, list[str]]
     narrative_key: str
     once: bool = True
+    # Objective IDs that must already be in the player's completed set before
+    # this trigger can fire. Use this to gate "you've done X and Y" narratives
+    # on multiple objectives without needing a synthetic combined event.
+    requires: list[str] = Field(default_factory=list)
 
 class BadgeDefinition(BaseModel):
     id: str
