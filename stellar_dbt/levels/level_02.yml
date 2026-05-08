@@ -150,20 +150,23 @@ objectives:
   - id: add_not_null_test
     label: "Add a not_null test on shipment_id in _stg_shipments.yml"
     hint: "Under the shipment_id column's tests list, add '- not_null'. This tells dbt to check that every row has a value."
+    # Reads the test out of the manifest so dbt itself confirms the test is
+    # attached to stg_shipments.shipment_id — a YAML block parked under the
+    # wrong column or a sibling model can't satisfy this check.
     check:
-      type: has_test
-      model_name: stg_shipments
-      column_name: shipment_id
-      test_type: not_null
+      type: manifest_column_test
+      model: stg_shipments
+      column: shipment_id
+      test_name: not_null
 
   - id: add_unique_test
     label: "Add a unique test on shipment_id in _stg_shipments.yml"
     hint: "Same spot, add '- unique'. This catches duplicate primary keys."
     check:
-      type: has_test
-      model_name: stg_shipments
-      column_name: shipment_id
-      test_type: unique
+      type: manifest_column_test
+      model: stg_shipments
+      column: shipment_id
+      test_name: unique
 
   - id: run_tests
     label: "Run dbt test and see the tests catch the bad data"

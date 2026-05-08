@@ -104,18 +104,24 @@ objectives:
   - id: set_materialization
     label: "Set fct_shipment_log to materialized='incremental'"
     hint: "Add a config block at the top of fct_shipment_log.sql. The syntax is: {{ config(materialized='incremental') }}"
+    # Read the resolved materialization from manifest.json. dbt computes the
+    # effective config from the file plus dbt_project.yml, so this passes
+    # only when the model truly is incremental — not just when the text
+    # appears somewhere in the file.
     check:
-      type: file_contains_active_sql
-      filename: models/marts/fct_shipment_log.sql
-      pattern: "config\\s*\\(\\s*materialized\\s*=\\s*['\"]incremental['\"]"
+      type: manifest_model_config
+      model: fct_shipment_log
+      key: materialized
+      value: incremental
 
   - id: add_unique_key
     label: "Set unique_key='shipment_id' in the config"
     hint: "Inside the config block, add unique_key='shipment_id'. This tells dbt to upsert (update if exists, insert if new) based on shipment_id."
     check:
-      type: file_contains_active_sql
-      filename: models/marts/fct_shipment_log.sql
-      pattern: "unique_key\\s*=\\s*['\"]shipment_id['\"]"
+      type: manifest_model_config
+      model: fct_shipment_log
+      key: unique_key
+      value: shipment_id
 
   - id: ref_shipments
     label: "Use ref('stg_shipments') in the model"
@@ -128,10 +134,13 @@ objectives:
   - id: add_is_incremental
     label: "Add an is_incremental() filter for delta processing on updated_at using {{this}}"
     hint: "Add a WHERE clause that only runs on incremental loads. The pattern is: {% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}"
+    # depends_on.macros only includes is_incremental when the Jinja was
+    # actually evaluated by dbt's parser — a stray reference in a comment or
+    # docstring won't show up here, unlike a regex match.
     check:
-      type: file_contains_active_sql
-      filename: models/marts/fct_shipment_log.sql
-      pattern: "is_incremental\\(\\)"
+      type: manifest_model_depends_on_macro
+      model: fct_shipment_log
+      macro_name: is_incremental
 
   - id: all_green
     label: "Run dbt and all models pass"

@@ -104,49 +104,59 @@ objectives:
   - id: describe_stg_model
     label: "Add a description to the stg_shipments model"
     hint: "In _stg_shipments.yml, add description: 'Cleaned shipment data...' (or similar) under the model name."
+    # Read the description from the compiled manifest so we know dbt
+    # actually attached it to the right model — and require enough text
+    # that placeholder values like 'x' or 'TODO' don't pass.
     check:
-      type: file_contains
-      filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*stg_shipments[\\s\\S]*?description:\\s*[\"']?\\S.{2,}"
+      type: manifest_model_description
+      model: stg_shipments
+      min_length: 10
 
   - id: describe_shipment_id
     label: "Add a description to the shipment_id column"
     hint: "Under the shipment_id column entry, add description: 'Unique identifier for each shipment' or similar."
     check:
-      type: file_contains
-      filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*shipment_id[\\s\\S]*?description:\\s*[\"']?\\S.{4,}"
+      type: manifest_column_description
+      model: stg_shipments
+      column: shipment_id
+      min_length: 10
 
   # Phase 2: Add accepted_values test
   - id: add_status_accepted_values
-    label: "Add an accepted_values test on the status column"
-    hint: "Under the status column in _stg_shipments.yml, add a tests section with accepted_values and a values list like ['delivered', 'in_transit']."
-    # Pattern requires: '- accepted_values:' (dash needed for list-item syntax),
-    # then a 'values:' key, then either an inline non-empty list `[a, b]` or a
-    # block list with at least one '- item'. The (?:(?!\n\s*-\s+name:)[\s\S])
-    # gap forbids crossing into the next column's section, so a malformed
-    # status block can't borrow a well-formed neighbor's accepted_values.
+    label: "Add an accepted_values test on the status column with values ['delivered', 'in_transit']"
+    hint: "Under the status column in _stg_shipments.yml, add a tests section with accepted_values and the values list ['delivered', 'in_transit']. The staging model lowercases status, so those are the only two valid values."
+    # Reads the test node out of the manifest so dbt itself confirms the test
+    # is attached to stg_shipments.status, and verifies the values list
+    # actually contains 'delivered' and 'in_transit' — a placeholder list
+    # like ['foo', 'bar'] won't satisfy this check the way regex would.
     check:
-      type: file_contains
-      filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*status(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?tests:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?-\\s*accepted_values:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?values:\\s*(?:\\[[^\\]]*\\S[^\\]]*\\]|(?:\\r?\\n\\s+-\\s+\\S+)+)"
+      type: manifest_column_test
+      model: stg_shipments
+      column: status
+      test_name: accepted_values
+      required_values: [delivered, in_transit]
 
   - id: add_cargo_type_accepted_values
-    label: "Add an accepted_values test on cargo_type"
+    label: "Add an accepted_values test on cargo_type with the valid cargo types"
     hint: "Valid cargo types in this dataset: supplies, equipment, humanitarian_aid, fuel_cells, medical. Do NOT include UNKNOWN_TYPE — the test should catch SHP-007 as invalid."
     check:
-      type: file_contains
-      filename: models/staging/_stg_shipments.yml
-      pattern: "name:\\s*cargo_type(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?tests:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?-\\s*accepted_values:(?:(?!\\n\\s*-\\s+name:)[\\s\\S])*?values:\\s*(?:\\[[^\\]]*\\S[^\\]]*\\]|(?:\\r?\\n\\s+-\\s+\\S+)+)"
+      type: manifest_column_test
+      model: stg_shipments
+      column: cargo_type
+      test_name: accepted_values
+      required_values: [supplies, equipment, humanitarian_aid, fuel_cells, medical]
+      # If UNKNOWN_TYPE is in the values list, the test would treat the bad
+      # row as valid — exactly what the level is teaching against. Reject it.
+      forbidden_values: [UNKNOWN_TYPE, unknown_type]
 
   # Phase 3: Document the mart
   - id: describe_mart_model
     label: "Add a description to the fct_trade_routes model"
     hint: "In _fct_trade_routes.yml, add a description explaining what the mart does."
     check:
-      type: file_contains
-      filename: models/marts/_fct_trade_routes.yml
-      pattern: "name:\\s*fct_trade_routes[\\s\\S]*?description:\\s*[\"']?\\S.{2,}"
+      type: manifest_model_description
+      model: fct_trade_routes
+      min_length: 10
 
   # Phase 4: Run tests
   - id: run_tests

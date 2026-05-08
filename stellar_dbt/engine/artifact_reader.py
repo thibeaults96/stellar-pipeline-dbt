@@ -74,40 +74,109 @@ class ManifestNode:
     unique_id: str
     name: str
     resource_type: str
+    description: str = ""
     depends_on: list[str] = field(default_factory=list)
+    depends_on_macros: list[str] = field(default_factory=list)
     columns: dict[str, dict] = field(default_factory=dict)
+    config: dict = field(default_factory=dict)
+    raw_code: str = ""
+    compiled_code: str = ""
+    # For test nodes only:
+    test_metadata: dict = field(default_factory=dict)
+    column_name: str = ""
+    attached_node: str = ""
 
 
-def read_manifest() -> dict[str, ManifestNode] | None:
+@dataclass
+class Manifest:
+    nodes: dict[str, ManifestNode] = field(default_factory=dict)
+    macros: dict[str, dict] = field(default_factory=dict)
+
+    def find_model(self, name: str) -> ManifestNode | None:
+        for node in self.nodes.values():
+            if node.resource_type == "model" and node.name == name:
+                return node
+        return None
+
+    def find_snapshot(self, name: str) -> ManifestNode | None:
+        for node in self.nodes.values():
+            if node.resource_type == "snapshot" and node.name == name:
+                return node
+        return None
+
+    def find_macro(self, name: str) -> dict | None:
+        for uid, macro in self.macros.items():
+            if macro.get("name") == name:
+                return macro
+        return None
+
+    def find_tests_for_column(
+        self, model_name: str, column_name: str, test_name: str | None = None,
+    ) -> list[ManifestNode]:
+        """Return test nodes attached to the given model.column. If test_name
+        is provided, only tests matching that test_metadata.name are returned."""
+        out: list[ManifestNode] = []
+        for node in self.nodes.values():
+            if node.resource_type != "test":
+                continue
+            meta = node.test_metadata or {}
+            kwargs = meta.get("kwargs") or {}
+            # The column-attached test node either records column_name on the
+            # node directly or in its kwargs; the model is in kwargs.model as a
+            # rendered ref('...') string. We match by suffix to avoid having to
+            # re-render that.
+            col = (node.column_name or kwargs.get("column_name") or "").lower()
+            if col != column_name.lower():
+                continue
+            model_ref = (kwargs.get("model") or "").lower()
+            attached = (node.attached_node or "").lower()
+            if model_name.lower() not in model_ref and not attached.endswith(f".{model_name.lower()}"):
+                continue
+            if test_name and meta.get("name") != test_name:
+                continue
+            out.append(node)
+        return out
+
+
+def read_manifest() -> Manifest | None:
     path = TARGET_DIR / "manifest.json"
     if not path.exists():
         return None
 
     data = json.loads(path.read_text())
-    nodes: dict[str, ManifestNode] = {}
+    manifest = Manifest()
 
-    # Models, seeds, snapshots etc.
     for uid, node in data.get("nodes", {}).items():
-        deps = node.get("depends_on", {}).get("nodes", [])
-        cols = node.get("columns", {})
-        nodes[uid] = ManifestNode(
+        deps_dict = node.get("depends_on") or {}
+        manifest.nodes[uid] = ManifestNode(
             unique_id=uid,
             name=node.get("name", ""),
             resource_type=node.get("resource_type", ""),
-            depends_on=deps,
-            columns=cols,
+            description=node.get("description", "") or "",
+            depends_on=deps_dict.get("nodes", []) or [],
+            depends_on_macros=deps_dict.get("macros", []) or [],
+            columns=node.get("columns", {}) or {},
+            config=node.get("config", {}) or {},
+            raw_code=node.get("raw_code", "") or "",
+            compiled_code=node.get("compiled_code", "") or "",
+            test_metadata=node.get("test_metadata", {}) or {},
+            column_name=node.get("column_name", "") or "",
+            attached_node=node.get("attached_node", "") or "",
         )
 
     # Sources (they appear in manifest.sources, not manifest.nodes)
     for uid, src in data.get("sources", {}).items():
-        nodes[uid] = ManifestNode(
+        manifest.nodes[uid] = ManifestNode(
             unique_id=uid,
             name=src.get("name", ""),
             resource_type="source",
-            depends_on=[],
+            description=src.get("description", "") or "",
+            columns=src.get("columns", {}) or {},
+            config=src.get("config", {}) or {},
         )
 
-    return nodes
+    manifest.macros = data.get("macros", {}) or {}
+    return manifest
 
 
 @dataclass

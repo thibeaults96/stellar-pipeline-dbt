@@ -91,34 +91,40 @@ objectives:
   - id: snapshot_name
     label: "Define a snapshot called shipment_status_snapshot"
     hint: "In shipment_snapshots.yml, start with: snapshots: then add - name: shipment_status_snapshot"
+    # Verifies dbt actually parsed and registered the snapshot under that
+    # name. If the snapshot YAML is too incomplete for dbt to accept, this
+    # will fail until the other config is filled in — which is the right
+    # signal: a snapshot isn't a snapshot until dbt agrees it is.
     check:
-      type: file_contains
-      filename: snapshots/shipment_snapshots.yml
-      pattern: "name:\\s*shipment_status_snapshot"
+      type: manifest_snapshot_exists
+      snapshot_name: shipment_status_snapshot
 
   - id: snapshot_relation
     label: "Set the relation to ref('stg_shipments')"
     hint: "Add: relation: ref('stg_shipments'). This tells dbt which model to track for changes."
+    # Use depends_on so a stray ref('stg_shipments') in a comment can't pass.
     check:
-      type: file_contains
-      filename: snapshots/shipment_snapshots.yml
-      pattern: "relation:\\s*ref\\(['\"]stg_shipments['\"]\\)"
+      type: manifest_snapshot_refs
+      snapshot_name: shipment_status_snapshot
+      target_model: stg_shipments
 
   - id: snapshot_strategy
     label: "Configure timestamp strategy with updated_at"
     hint: "Under config:, add strategy: timestamp and updated_at: updated_at. This tells dbt to detect changes by comparing the updated_at column."
     check:
-      type: file_contains
-      filename: snapshots/shipment_snapshots.yml
-      pattern: "strategy:\\s*timestamp"
+      type: manifest_snapshot_config
+      snapshot_name: shipment_status_snapshot
+      key: strategy
+      value: timestamp
 
   - id: snapshot_unique_key
     label: "Set unique_key to shipment_id"
     hint: "Under config:, add unique_key: shipment_id. This tells dbt which column identifies each row."
     check:
-      type: file_contains
-      filename: snapshots/shipment_snapshots.yml
-      pattern: "unique_key:\\s*shipment_id"
+      type: manifest_snapshot_config
+      snapshot_name: shipment_status_snapshot
+      key: unique_key
+      value: shipment_id
 
   - id: all_green
     label: "Run dbt — all models pass"

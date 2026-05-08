@@ -124,16 +124,20 @@ objectives:
   - id: create_macro
     label: "Create a flag_suspicious macro in macros/flag_suspicious.sql"
     hint: "Define the macro with: {% macro flag_suspicious(column_name) %} case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }} {% endmacro %}"
-    # Use *_active_sql so the inline example syntax in `-- comments` doesn't
-    # satisfy this check before the player writes any actual code.
+    # dbt only registers the macro in manifest.macros if it parses correctly
+    # — open `{% macro %}` blocks, malformed Jinja, or SQL keywords stuck
+    # in the example comments won't satisfy this check.
     check:
-      type: file_contains_active_sql
-      filename: macros/flag_suspicious.sql
-      pattern: "macro\\s+flag_suspicious"
+      type: manifest_macro_defined
+      macro_name: flag_suspicious
 
   - id: macro_has_case_when
     label: "The macro should contain the CASE WHEN logic"
     hint: "Inside the macro, write: case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }}"
+    # The macro body is freeform SQL inside Jinja, so we still need to peek
+    # at its text to confirm the analytic logic is present. Scoped to the
+    # active SQL only (comments stripped) so the example block at the top
+    # of the starter file can't pass this on its own.
     check:
       type: file_contains_active_sql
       filename: macros/flag_suspicious.sql
@@ -151,10 +155,13 @@ objectives:
   - id: use_macro
     label: "Call the flag_suspicious macro in the investigation model, name the column is_suspicious"
     hint: "In your SELECT, add: {{ flag_suspicious('is_suspicious') }}. This calls your macro and names the output column is_suspicious."
+    # Manifest depends_on.macros only includes the macro if dbt actually
+    # rendered the call site. A bare `flag_suspicious(` in a SQL string
+    # literal or comment won't satisfy this.
     check:
-      type: file_contains_active_sql
-      filename: models/marts/fct_voss_investigation.sql
-      pattern: "flag_suspicious\\s*\\("
+      type: manifest_model_depends_on_macro
+      model: fct_voss_investigation
+      macro_name: flag_suspicious
 
   - id: add_risk_level
     label: "Add a risk_level column: 'high' for classified cargo, 'medium' otherwise"

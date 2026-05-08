@@ -279,7 +279,192 @@ def _check(c: ObjectiveCheck) -> CheckResult:
         except Exception as e:
             return _fail(f"Could not query database: {e}")
 
+    # ── Manifest-based checks ────────────────────────────────────────────
+
+    if c.type == "manifest_model_config":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        node = manifest.find_model(c.model)
+        if not node:
+            return _fail(f"Model '{c.model}' not found in dbt manifest. Run dbt to compile it.")
+        actual = node.config.get(c.key)
+        if actual is None or actual == "":
+            return _fail(
+                f"Model '{c.model}' has no `{c.key}` configured. "
+                f"Add it to the {{{{ config(...) }}}} block."
+            )
+        if str(actual).strip().lower() != c.value.strip().lower():
+            return _fail(
+                f"Model '{c.model}' has {c.key}={actual!r}, expected {c.value!r}."
+            )
+        return _ok()
+
+    if c.type == "manifest_model_description":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        node = manifest.find_model(c.model)
+        if not node:
+            return _fail(f"Model '{c.model}' not found in dbt manifest. Run dbt to compile it.")
+        desc = (node.description or "").strip()
+        if not desc:
+            return _fail(f"Model '{c.model}' has no description in its YAML.")
+        if len(desc) < c.min_length:
+            return _fail(
+                f"Description on '{c.model}' is too short ({len(desc)} chars). "
+                f"Write at least {c.min_length} characters explaining what this model does."
+            )
+        return _ok()
+
+    if c.type == "manifest_column_description":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        node = manifest.find_model(c.model)
+        if not node:
+            return _fail(f"Model '{c.model}' not found in dbt manifest. Run dbt to compile it.")
+        col = next(
+            (v for k, v in node.columns.items() if k.lower() == c.column.lower()),
+            None,
+        )
+        if not col:
+            return _fail(
+                f"Column '{c.column}' not declared in '{c.model}'s YAML. "
+                "Add it under columns: with a description."
+            )
+        desc = ((col.get("description") if isinstance(col, dict) else "") or "").strip()
+        if not desc:
+            return _fail(f"Column '{c.column}' on '{c.model}' has no description in its YAML.")
+        if len(desc) < c.min_length:
+            return _fail(
+                f"Description on '{c.model}.{c.column}' is too short ({len(desc)} chars). "
+                f"Write at least {c.min_length} characters explaining what this column means."
+            )
+        return _ok()
+
+    if c.type == "manifest_column_test":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        if not manifest.find_model(c.model):
+            return _fail(f"Model '{c.model}' not found in dbt manifest. Run dbt to compile it.")
+        tests = manifest.find_tests_for_column(c.model, c.column, c.test_name)
+        if not tests:
+            return _fail(
+                f"No `{c.test_name}` test on `{c.model}.{c.column}` in the manifest. "
+                f"Add it under the column's tests: list."
+            )
+        if c.test_name == "accepted_values":
+            for test_node in tests:
+                values = (test_node.test_metadata or {}).get("kwargs", {}).get("values") or []
+                values_set = {str(v).lower() for v in values}
+                missing = [v for v in c.required_values if v.lower() not in values_set]
+                forbidden_present = [v for v in c.forbidden_values if v.lower() in values_set]
+                if missing:
+                    return _fail(
+                        f"`accepted_values` on `{c.model}.{c.column}` is missing: "
+                        f"{', '.join(repr(v) for v in missing)}. "
+                        f"Found values: {sorted(values_set)}."
+                    )
+                if forbidden_present:
+                    return _fail(
+                        f"`accepted_values` on `{c.model}.{c.column}` includes "
+                        f"value(s) it shouldn't: {', '.join(repr(v) for v in forbidden_present)}. "
+                        "Those represent invalid data the test should catch."
+                    )
+                return _ok()
+        return _ok()
+
+    if c.type == "manifest_model_depends_on_macro":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        node = manifest.find_model(c.model)
+        if not node:
+            return _fail(f"Model '{c.model}' not found in dbt manifest. Run dbt to compile it.")
+        # depends_on.macros entries look like 'macro.<project>.<name>'.
+        suffix = f".{c.macro_name}"
+        if not any(uid.endswith(suffix) for uid in node.depends_on_macros):
+            return _fail(
+                f"Model '{c.model}' doesn't call macro `{c.macro_name}` "
+                "(checked via the compiled manifest). Make sure you actually "
+                "invoke it in the model — `{{{{ " + c.macro_name + "(...) }}}}`."
+            )
+        return _ok()
+
+    if c.type == "manifest_macro_defined":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        if not manifest.find_macro(c.macro_name):
+            return _fail(
+                f"Macro `{c.macro_name}` not found in the manifest. Define it "
+                f"with {{% macro {c.macro_name}(...) %}} in macros/."
+            )
+        return _ok()
+
+    if c.type == "manifest_snapshot_exists":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        if not manifest.find_snapshot(c.snapshot_name):
+            return _fail(
+                f"Snapshot `{c.snapshot_name}` not found in the manifest. "
+                "Make sure it's defined under `snapshots:` with the right name."
+            )
+        return _ok()
+
+    if c.type == "manifest_snapshot_config":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        snap = manifest.find_snapshot(c.snapshot_name)
+        if not snap:
+            return _fail(
+                f"Snapshot `{c.snapshot_name}` not found in the manifest. "
+                "Make sure it's defined in the snapshots/ YAML."
+            )
+        actual = snap.config.get(c.key)
+        if actual is None or actual == "":
+            return _fail(
+                f"Snapshot `{c.snapshot_name}` has no `{c.key}` configured."
+            )
+        if str(actual).strip().lower() != c.value.strip().lower():
+            return _fail(
+                f"Snapshot `{c.snapshot_name}` has {c.key}={actual!r}, expected {c.value!r}."
+            )
+        return _ok()
+
+    if c.type == "manifest_snapshot_refs":
+        manifest = _require_manifest()
+        if isinstance(manifest, CheckResult):
+            return manifest
+        snap = manifest.find_snapshot(c.snapshot_name)
+        if not snap:
+            return _fail(
+                f"Snapshot `{c.snapshot_name}` not found in the manifest. "
+                "Make sure it's defined in the snapshots/ YAML."
+            )
+        suffix = f".{c.target_model}"
+        if not any(uid.endswith(suffix) for uid in snap.depends_on):
+            return _fail(
+                f"Snapshot `{c.snapshot_name}` doesn't reference model "
+                f"`{c.target_model}`. Set `relation: ref('{c.target_model}')`."
+            )
+        return _ok()
+
     return _fail(f"Unknown check type: {c.type}")
+
+
+def _require_manifest():
+    manifest = artifact_reader.read_manifest()
+    if not manifest:
+        return _fail(
+            "No dbt manifest yet — run dbt (or click 'dbt run') so we can "
+            "validate against what dbt actually parsed."
+        )
+    return manifest
 
 
 _VALID_FRESHNESS_PERIODS = {"minute", "hour", "day"}
