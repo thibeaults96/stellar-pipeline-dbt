@@ -64,12 +64,12 @@ initial_files:
     --
     -- The shape of an incremental model in dbt:
     --
-    --   {{ config(materialized='incremental', unique_key='shipment_id') }}
+    --   {{ config(materialized='incremental', unique_key='key_column') }}
     --
-    --   select * from {{ ref('stg_shipments') }}
+    --   select * from {{ ref('...') }}
     --
     --   {% if is_incremental() %}
-    --     where updated_at > (select max(updated_at) from {{ this }})
+    --     where update_column > (select max(update_column) from {{ this }})
     --   {% endif %}
     --
     -- What each piece does:

@@ -142,11 +142,23 @@ initial_files:
           - name: status
             description: "Current status of the shipment"
 
+# ── Phase 0: Build the pipeline so we can see the problem ──
 # ── Phase 1: Add tests on shipment_id ──
 # ── Phase 2: Configure freshness ──
 # ── Phase 3: Run tests and see them catch the bad data ──
 
 objectives:
+  - id: initial_run
+    label: "Run dbt — the models build cleanly even though the data is broken"
+    hint: "Click 'dbt run' or press Cmd+Enter. Everything will compile and pass — that's exactly the point. dbt doesn't validate row contents unless you tell it to. Running now also materializes the tables so the tests you write next have something to check against."
+    # model_passes on the downstream leaf confirms the full pipeline ran —
+    # if fct_supply_report built, every upstream model did too. We avoid
+    # all_models_pass here because that check is gated on every other
+    # objective being done first (see GameEngine._check_all).
+    check:
+      type: model_passes
+      model: fct_supply_report
+
   - id: add_not_null_test
     label: "Add a not_null test on shipment_id in _stg_shipments.yml"
     hint: "Under the shipment_id column's tests list, add '- not_null'. This tells dbt to check that every row has a value."
@@ -263,7 +275,7 @@ narrative_script:
   intro_guide:
     id: intro_guide
     character: R0-B3RT
-    message: "So the models all compile and run fine, that's not the issue. The problem is in the data itself. Click <highlight>raw_shipments</highlight> under SOURCE DATA and take a look. See anything off? Then open <highlight>_stg_shipments.yml</highlight>, that's where you'll add tests. The TODO comments show you the syntax."
+    message: "First thing, kick off a <highlight>dbt run</highlight> so we can see what we're dealing with. The models will all compile and pass — that's actually the problem, because the data is broken. Once it's built, click <highlight>raw_shipments</highlight> under SOURCE DATA to see what's off, then open <highlight>_stg_shipments.yml</highlight> where you'll add tests. The TODO comments show you the syntax."
     priority: normal
 
   data_problem:
