@@ -73,7 +73,7 @@ initial_files:
     --
     -- Macro syntax:
     --
-    --   {% macro flag_suspicious(column_name) %}
+    --   {% macro example_macro(column_name) %}
     --       case
     --           when ... then 1
     --           else 0
