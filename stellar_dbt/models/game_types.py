@@ -97,12 +97,107 @@ class DuckDBRowCount(BaseModel):
     where: str = ""  # Optional WHERE clause — all rows must match
 
 
+# Manifest-based checks. These read dbt's compiled manifest.json so we trust
+# what dbt itself parsed, instead of regexing the file contents. Requires the
+# player to have run any dbt command first (run / build / test / seed all
+# refresh manifest.json).
+
+class ManifestModelConfig(BaseModel):
+    """Verify a model's compiled config carries the expected key/value.
+
+    `value` is compared as a string (case-insensitive) against the manifest
+    entry. Use this for `materialized`, `unique_key`, etc. — anything that's a
+    scalar in `{{ config(...) }}`. Falsey manifest values (None / empty) are
+    treated as "missing" and reported separately."""
+    type: Literal["manifest_model_config"] = "manifest_model_config"
+    model: str
+    key: str
+    value: str
+
+
+class ManifestModelDescription(BaseModel):
+    """Verify a model has a non-empty description in the manifest.
+
+    `min_length` rejects placeholder descriptions like 'x' or 'TODO'. The
+    manifest description is what dbt parsed from YAML, so this catches cases
+    where the description was attached to the wrong model in YAML."""
+    type: Literal["manifest_model_description"] = "manifest_model_description"
+    model: str
+    min_length: int = 10
+
+
+class ManifestColumnDescription(BaseModel):
+    """Verify a column on a model has a non-empty description in the manifest."""
+    type: Literal["manifest_column_description"] = "manifest_column_description"
+    model: str
+    column: str
+    min_length: int = 10
+
+
+class ManifestColumnTest(BaseModel):
+    """Verify a model.column has a test of the given name attached in the
+    manifest. For accepted_values, optionally enforce that the values list
+    includes everything in `required_values` and excludes everything in
+    `forbidden_values`. This catches the common false-pass where a player
+    writes an accepted_values block with the wrong list and the regex check
+    is satisfied because *some* list exists."""
+    type: Literal["manifest_column_test"] = "manifest_column_test"
+    model: str
+    column: str
+    test_name: str
+    required_values: list[str] = Field(default_factory=list)
+    forbidden_values: list[str] = Field(default_factory=list)
+
+
+class ManifestModelDependsOnMacro(BaseModel):
+    """Verify a model's compiled depends_on.macros references the named macro.
+    Use this instead of regexing for `macro_name(` — manifest tracks the
+    actual call graph after Jinja resolution, so a macro name in a comment
+    can't satisfy this check."""
+    type: Literal["manifest_model_depends_on_macro"] = "manifest_model_depends_on_macro"
+    model: str
+    macro_name: str
+
+
+class ManifestMacroDefined(BaseModel):
+    """Verify a macro is defined and parsed into manifest.macros."""
+    type: Literal["manifest_macro_defined"] = "manifest_macro_defined"
+    macro_name: str
+
+
+class ManifestSnapshotExists(BaseModel):
+    """Verify a snapshot of the given name appears in the dbt manifest, i.e.
+    dbt successfully parsed and registered it."""
+    type: Literal["manifest_snapshot_exists"] = "manifest_snapshot_exists"
+    snapshot_name: str
+
+
+class ManifestSnapshotConfig(BaseModel):
+    """Verify a snapshot exists with the expected config key/value, parsed
+    structurally by dbt. Replaces YAML regex matching for snapshots."""
+    type: Literal["manifest_snapshot_config"] = "manifest_snapshot_config"
+    snapshot_name: str
+    key: str
+    value: str
+
+
+class ManifestSnapshotRefs(BaseModel):
+    """Verify a snapshot in the manifest depends on a specific model (i.e.
+    its `relation:` was wired up via ref())."""
+    type: Literal["manifest_snapshot_refs"] = "manifest_snapshot_refs"
+    snapshot_name: str
+    target_model: str
+
+
 ObjectiveCheck = Union[
     HasColumnAlias, HasRefCall, FileContainsActiveSql, FileContains,
     NoHardcodedRefs, HasTest, HasFreshnessConfig,
     ArtifactAllModelsPass, ArtifactModelPasses, ArtifactTestRanWithFailures,
     SourceFreshnessRan,
     DuckDBColumnExists, DuckDBColumnsExist, DuckDBColumnValuesCheck, DuckDBRowCount, SnapshotRan,
+    ManifestModelConfig, ManifestModelDescription, ManifestColumnDescription,
+    ManifestColumnTest, ManifestModelDependsOnMacro, ManifestMacroDefined,
+    ManifestSnapshotExists, ManifestSnapshotConfig, ManifestSnapshotRefs,
 ]
 
 
@@ -125,9 +220,13 @@ class NarrativeEvent(BaseModel):
 
 class NarrativeTrigger(BaseModel):
     id: str
-    event: str
+    event: Union[str, list[str]]
     narrative_key: str
     once: bool = True
+    # Objective IDs that must already be in the player's completed set before
+    # this trigger can fire. Use this to gate "you've done X and Y" narratives
+    # on multiple objectives without needing a synthetic combined event.
+    requires: list[str] = Field(default_factory=list)
 
 class BadgeDefinition(BaseModel):
     id: str

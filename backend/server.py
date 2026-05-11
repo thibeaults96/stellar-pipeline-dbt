@@ -199,9 +199,10 @@ async def write_file(path: str, body: FileWriteRequest):
 
 @app.get("/api/manifest")
 async def get_manifest():
-    nodes = artifact_reader.read_manifest()
-    if not nodes:
+    manifest = artifact_reader.read_manifest()
+    if not manifest:
         return {"nodes": [], "edges": []}
+    nodes = manifest.nodes
 
     # Get run results for status coloring
     rr = artifact_reader.read_run_results()

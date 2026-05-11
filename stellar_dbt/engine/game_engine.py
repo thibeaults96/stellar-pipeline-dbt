@@ -49,8 +49,9 @@ class GameEngine:
 
         # Fire LEVEL_START narrative
         fired = set(state.fired_triggers.get(level_id, []))
+        completed = set(state.completed_objectives.get(level_id, []))
         narratives, fired = narrative_engine.process(
-            ["LEVEL_START"], level.narrative_triggers, level.narrative_script, fired,
+            ["LEVEL_START"], level.narrative_triggers, level.narrative_script, fired, completed,
         )
         state.fired_triggers[level_id] = list(fired)
         # Store narratives in state so the frontend can pick them up via /api/status
@@ -126,8 +127,9 @@ class GameEngine:
 
         # Fire narratives
         fired = set(state.fired_triggers.get(level.id, []))
+        completed = set(state.completed_objectives.get(level.id, []))
         narratives, fired = narrative_engine.process(
-            events, level.narrative_triggers, level.narrative_script, fired,
+            events, level.narrative_triggers, level.narrative_script, fired, completed,
         )
         state.fired_triggers[level.id] = list(fired)
         state.pending_narratives = [n.model_dump() for n in narratives]
@@ -177,8 +179,9 @@ class GameEngine:
             report.badge = badge
 
         fired = set(state.fired_triggers.get(level.id, []))
+        completed = set(state.completed_objectives.get(level.id, []))
         narratives, fired = narrative_engine.process(
-            events, level.narrative_triggers, level.narrative_script, fired,
+            events, level.narrative_triggers, level.narrative_script, fired, completed,
         )
         state.fired_triggers[level.id] = list(fired)
         state.pending_narratives = [n.model_dump() for n in narratives]
@@ -247,8 +250,9 @@ class GameEngine:
             report.badge = badge
 
         fired = set(state.fired_triggers.get(level.id, []))
+        completed = set(state.completed_objectives.get(level.id, []))
         narratives, fired = narrative_engine.process(
-            events, level.narrative_triggers, level.narrative_script, fired,
+            events, level.narrative_triggers, level.narrative_script, fired, completed,
         )
         state.fired_triggers[level.id] = list(fired)
         state.pending_narratives = [n.model_dump() for n in narratives]
@@ -294,8 +298,9 @@ class GameEngine:
             report.badge = badge
 
         fired = set(state.fired_triggers.get(level.id, []))
+        completed = set(state.completed_objectives.get(level.id, []))
         narratives, fired = narrative_engine.process(
-            events, level.narrative_triggers, level.narrative_script, fired,
+            events, level.narrative_triggers, level.narrative_script, fired, completed,
         )
         state.fired_triggers[level.id] = list(fired)
         state.pending_narratives = [n.model_dump() for n in narratives]
@@ -345,8 +350,9 @@ class GameEngine:
             report.badge = badge
 
         fired = set(state.fired_triggers.get(level.id, []))
+        completed = set(state.completed_objectives.get(level.id, []))
         narratives, fired = narrative_engine.process(
-            events, level.narrative_triggers, level.narrative_script, fired,
+            events, level.narrative_triggers, level.narrative_script, fired, completed,
         )
         state.fired_triggers[level.id] = list(fired)
         state.pending_narratives = [n.model_dump() for n in narratives]
