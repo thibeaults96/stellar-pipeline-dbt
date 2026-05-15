@@ -56,7 +56,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Install
 
 ```bash
-git clone https://github.com/yourusername/stellar-pipeline.git
+git clone https://github.com/thibeaults96/stellar-pipeline.git
 cd stellar-pipeline
 bash setup.sh
 ```
