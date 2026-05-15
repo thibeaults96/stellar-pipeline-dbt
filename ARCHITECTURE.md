@@ -4,7 +4,7 @@ Every file in the repo, what it does, and why it's here.
 
 ## How the system works
 
-The game has three layers:
+The game has three  layers:
 
 1. **dbt project** (`dbt_project/`) — a real dbt project with SQL models, YAML configs, CSV seed data, and snapshot definitions. When the player clicks "dbt run", actual dbt executes against a local DuckDB database.
 
