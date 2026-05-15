@@ -1,15 +1,15 @@
 id: 5
-title: "The Time Ledger"
-subtitle: "Track how data changes over time."
-character: "R0-B3RT"
-xp_reward: 230
+title: "Trust but Verify"
+subtitle: "Generic tests — not_null, unique, accepted_values, relationships."
+character: "NAV"
+xp_reward: 220
 
 badge:
-  id: time_keeper
-  emoji: "\U0001f570\ufe0f"
-  name: "Time Keeper"
-  description: "Built a dbt snapshot to track how shipment data changes over time."
-  xp: 230
+  id: quality_guardian
+  emoji: "\U0001f6e1️"
+  name: "Quality Guardian"
+  description: "Wired up all four generic dbt tests and watched them catch bad rows in production data."
+  xp: 220
 
 locked_files:
   - models/staging/stg_planets.sql
@@ -17,167 +17,211 @@ locked_files:
   - models/marts/fct_trade_routes.sql
 
 seed_files:
-  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,updated_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T14:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0,2847-03-03T08:00:00Z\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-03-04T00:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0,2847-03-04T10:00:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0,2847-03-04T22:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-05T00:00:00Z\n"
+  # Seed mixes in deliberately broken rows so each generic test has something
+  # to catch:
+  #   SHP-NULL row → catches `not_null` on shipment_id
+  #   SHP-002 appears twice → catches `unique` on shipment_id
+  #   UNKNOWN_TYPE cargo → catches `accepted_values` on cargo_type
+  #   origin_planet=ZZZ (no such planet) → catches `relationships` on origin_planet_id
+  #   SHP-008 routes MRD-9 → MRD-9 (origin==destination) → catches the singular test
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED\n,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED\nSHP-002,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED\nSHP-006,ZZZ,MRD-9,supplies,1500kg,2847-03-04T08:00:00Z,,IN_TRANSIT\nSHP-007,K7B,MRD-9,UNKNOWN_TYPE,500kg,2847-03-04T10:00:00Z,,IN_TRANSIT\nSHP-008,MRD-9,MRD-9,supplies,500kg,2847-03-04T12:00:00Z,,IN_TRANSIT\n"
 
 initial_files:
   models/staging/stg_shipments.sql: |
     -- stg_shipments.sql (carried forward)
 
     with source as (
-        select * from {{ source('federation', 'raw_shipments') }}
+        select * from {{ source('helios', 'raw_shipments') }}
     ),
     renamed as (
-        select shipment_id, origin_planet as origin_planet_id,
-            dest_planet as destination_planet_id, cargo_type,
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
             cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
             cast(departed_at as timestamp) as departed_at,
             cast(arrived_at as timestamp) as arrived_at,
-            lower(status) as status, voss_flag, updated_at
+            lower(status) as status
         from source
     )
     select * from renamed
 
   models/marts/fct_trade_routes.sql: |
     -- fct_trade_routes.sql (carried forward)
+    {{ config(materialized='table') }}
 
     with shipments as (
         select * from {{ ref('stg_shipments') }}
     ), planets as (
         select * from {{ ref('stg_planets') }}
     ), routes as (
-        select s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
-            s.departed_at, s.arrived_at, s.voss_flag,
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
             origin.planet_name as origin_planet_name,
             dest.planet_name as destination_planet_name,
-            dest.is_federation_member as dest_is_federation
+            origin.sector as origin_sector
         from shipments s
         left join planets origin on s.origin_planet_id = origin.planet_id
         left join planets dest on s.destination_planet_id = dest.planet_id
     )
     select * from routes
 
-  snapshots/shipment_snapshots.yml: |
-    # Snapshot: track how shipment rows change over time.
-    #
-    # Fill in each TODO below — every line maps to an objective in the panel.
-    # On first 'dbt snapshot' run, dbt captures the current state. On later
-    # runs, it adds new versions of changed rows and stamps the old ones with
-    # dbt_valid_to. The dbt_valid_from / dbt_valid_to / dbt_scd_id columns
-    # are added automatically.
-
-    snapshots:
-      - name:                    # TODO: name this snapshot (check objectives)
-        relation:                # TODO: which model to track? use ref('...')
-        config:
-          strategy:              # TODO: how should dbt detect changes? (hint: 'timestamp')
-          unique_key:            # TODO: which column identifies each row?
-          updated_at:            # TODO: which column tracks when rows change?
-
-  models/sources/federation_sources.yml: |
+  models/sources/helios_sources.yml: |
     version: 2
 
     sources:
-      - name: federation
-        description: "Raw telemetry data from Federation sensor arrays"
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
         schema: main
         tables:
           - name: raw_shipments
-            description: "Cargo shipment records from all registered vessels"
+            description: "Cargo shipment records from inbound and outbound vessels"
           - name: raw_planets
-            description: "Planetary registry and resource data"
+            description: "Planetary registry: ports of call along Helios routes"
+
+  models/staging/_stg_shipments.yml: |
+    version: 2
+
+    models:
+      - name: stg_shipments
+        description: "Cleaned cargo shipment data"
+        columns:
+          - name: shipment_id
+            description: "Unique identifier for each shipment"
+            # TODO: add a tests: list here with `- not_null` and `- unique`.
+
+          - name: cargo_type
+            description: "Category of cargo carried"
+            # TODO: add a tests: list with `- accepted_values: values: [...]`.
+            # Valid cargo types in this dataset:
+            #   supplies, equipment, humanitarian_aid, fuel_cells, medical
+            # Do NOT include UNKNOWN_TYPE — that's the bad data the test should catch.
+
+          - name: origin_planet_id
+            description: "Foreign key to stg_planets.planet_id (origin port)"
+            # TODO: add a tests: list with `- relationships:`
+            # The relationships test needs `to:` and `field:` kwargs:
+            #   - relationships:
+            #       to: ref('stg_planets')
+            #       field: planet_id
 
 objectives:
-
-  - id: snapshot_name
-    label: "Define a snapshot called shipment_status_snapshot"
-    hint: "In shipment_snapshots.yml, start with: snapshots: then add - name: shipment_status_snapshot"
-    # Verifies dbt actually parsed and registered the snapshot under that
-    # name. If the snapshot YAML is too incomplete for dbt to accept, this
-    # will fail until the other config is filled in — which is the right
-    # signal: a snapshot isn't a snapshot until dbt agrees it is.
+  - id: initial_run
+    label: "Click 'dbt run' first — the broken rows still build, that's the whole problem"
+    hint: "dbt won't validate row contents unless you tell it to. Everything will compile and pass — and the bad data slips through. That's exactly the point. Once the models are materialized, the tests you add next have something to check against."
     check:
-      type: manifest_snapshot_exists
-      snapshot_name: shipment_status_snapshot
+      type: model_passes
+      model: fct_trade_routes
 
-  - id: snapshot_relation
-    label: "Set the relation to ref('stg_shipments')"
-    hint: "Add: relation: ref('stg_shipments'). This tells dbt which model to track for changes."
-    # Use depends_on so a stray ref('stg_shipments') in a comment can't pass.
+  - id: add_not_null_test
+    label: "Add a `not_null` test on shipment_id in _stg_shipments.yml"
+    hint: "Under shipment_id's `tests:` list, add `- not_null`. dbt will compile this into a query that fails if any row has a NULL shipment_id."
     check:
-      type: manifest_snapshot_refs
-      snapshot_name: shipment_status_snapshot
-      target_model: stg_shipments
+      type: manifest_column_test
+      model: stg_shipments
+      column: shipment_id
+      test_name: not_null
 
-  - id: snapshot_strategy
-    label: "Configure timestamp strategy with updated_at"
-    hint: "Under config:, add strategy: timestamp and updated_at: updated_at. This tells dbt to detect changes by comparing the updated_at column."
+  - id: add_unique_test
+    label: "Add a `unique` test on shipment_id"
+    hint: "Same column, same list: `- unique`. This catches duplicate primary keys — the seed has SHP-002 appearing twice."
     check:
-      type: manifest_snapshot_config
-      snapshot_name: shipment_status_snapshot
-      key: strategy
-      value: timestamp
+      type: manifest_column_test
+      model: stg_shipments
+      column: shipment_id
+      test_name: unique
 
-  - id: snapshot_unique_key
-    label: "Set unique_key to shipment_id"
-    hint: "Under config:, add unique_key: shipment_id. This tells dbt which column identifies each row."
+  - id: add_accepted_values_test
+    label: "Add an `accepted_values` test on cargo_type with the valid types"
+    hint: "Under cargo_type, write `- accepted_values:` then `values: [supplies, equipment, humanitarian_aid, fuel_cells, medical]` indented under it. Do NOT include UNKNOWN_TYPE — that's the row the test should catch."
     check:
-      type: manifest_snapshot_config
-      snapshot_name: shipment_status_snapshot
-      key: unique_key
-      value: shipment_id
+      type: manifest_column_test
+      model: stg_shipments
+      column: cargo_type
+      test_name: accepted_values
+      required_values: [supplies, equipment, humanitarian_aid, fuel_cells, medical]
+      forbidden_values: [UNKNOWN_TYPE, unknown_type]
+
+  - id: add_relationships_test
+    label: "Add a `relationships` test on origin_planet_id → stg_planets.planet_id"
+    hint: "Under origin_planet_id, add: `- relationships:` then `to: ref('stg_planets')` and `field: planet_id`. This verifies every foreign key resolves to a real planet — SHP-006's `ZZZ` origin should fail."
+    check:
+      type: manifest_column_test
+      model: stg_shipments
+      column: origin_planet_id
+      test_name: relationships
+
+  - id: write_singular_test
+    label: "Write a singular test in tests/no_self_routing.sql"
+    hint: "Generic tests cover \"every column needs to be unique / not_null / etc.\" Singular tests catch business rules that don't fit that pattern. Create `tests/no_self_routing.sql` — a SELECT that returns rows ONLY when the rule is violated. The rule: a shipment shouldn't have the same origin and destination. SQL: `select * from {{ ref('stg_shipments') }} where origin_planet_id = destination_planet_id`. dbt picks up the file automatically — no YAML registration needed."
+    check:
+      type: file_contains
+      filename: tests/no_self_routing.sql
+      pattern: "origin_planet_id\\s*=\\s*destination_planet_id"
+
+  - id: run_tests
+    label: "Click 'dbt test' — the generic + singular tests run together"
+    hint: "dbt test runs every test in the project: the 4 generic ones you added to YAML, plus every .sql file in tests/. Multiple tests will fail — that's the whole point. Singular tests fail if their SELECT returns any rows; generic tests fail if their compiled query returns any."
+    check:
+      type: tests_ran_with_failures
 
   - id: all_green
-    label: "Run dbt — all models pass"
-    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new snapshot."
+    label: "Click 'dbt run' — confirm models still build with the new test config"
+    hint: "Tests are metadata to the run step. The models keep building; tests run separately. Confirm dbt run still finishes clean."
     check:
       type: all_models_pass
 
-  - id: run_snapshot
-    label: "Run dbt snapshot successfully"
-    hint: "Click 'dbt snapshot' to run it. On first run it captures the current state of all rows."
-    check:
-      type: snapshot_ran
-      table: shipment_status_snapshot
-
 narrative_triggers:
-  - id: nt_start
+  - id: nt_intro
     event: LEVEL_START
     narrative_key: intro
     once: true
 
-  - id: nt_start_guide
+  - id: nt_matsuri
     event: LEVEL_START
-    narrative_key: snapshot_guide
+    narrative_key: matsuri_warning
     once: true
 
   - id: nt_first_run
-    event: FIRST_RUN
-    narrative_key: first_run
+    event: OBJECTIVE_initial_run_COMPLETE
+    narrative_key: data_problem
     once: true
 
-  - id: nt_name_done
-    event: OBJECTIVE_snapshot_name_COMPLETE
-    narrative_key: name_done
+  - id: nt_unique_done
+    event: OBJECTIVE_add_unique_test_COMPLETE
+    narrative_key: identity_tests_done
     once: true
 
-  - id: nt_relation_done
-    event: OBJECTIVE_snapshot_relation_COMPLETE
-    narrative_key: relation_done
+  - id: nt_accepted_done
+    event: OBJECTIVE_add_accepted_values_test_COMPLETE
+    narrative_key: accepted_done
     once: true
 
-  - id: nt_config_done
-    event: OBJECTIVE_snapshot_unique_key_COMPLETE
-    narrative_key: config_done
+  - id: nt_relationships_done
+    event: OBJECTIVE_add_relationships_test_COMPLETE
+    narrative_key: relationships_done
     once: true
 
-  - id: nt_snapshot_run
-    event: SNAPSHOT_RUN
-    narrative_key: snapshot_ran
+  - id: nt_singular_guide
+    event: OBJECTIVE_add_relationships_test_COMPLETE
+    narrative_key: singular_guide
     once: true
 
-  - id: nt_all_green_guide
-    event: OBJECTIVE_run_snapshot_COMPLETE
-    narrative_key: final_run_guide
+  - id: nt_singular_done
+    event: OBJECTIVE_write_singular_test_COMPLETE
+    narrative_key: singular_done
+    once: true
+
+  - id: nt_test_results
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: test_results
+    once: true
+
+  - id: nt_build_tip
+    event: OBJECTIVE_run_tests_COMPLETE
+    narrative_key: build_tip
     once: true
 
   - id: nt_complete
@@ -188,54 +232,66 @@ narrative_triggers:
 narrative_script:
   intro:
     id: intro
-    character: R0-B3RT
-    message: "We've got a new problem. Shipments keep changing status, IN_TRANSIT to DELIVERED, sometimes back to IN_TRANSIT. But our models only show the current state. When something changes, the old data is gone. We need a way to <highlight>track how data changes over time</highlight>. That's what dbt snapshots do."
+    character: NAV
+    message: "The pipeline builds. Holt thinks it works. But <highlight>nothing's been validated</highlight>. The dock crew typed some of this data by hand. A new shift took over yesterday and used a cargo type that doesn't officially exist. One vessel logged an origin port that isn't in the registry. This is the test layer — where we make dbt fail loudly when the data is wrong."
     priority: high
 
-  snapshot_guide:
-    id: snapshot_guide
-    character: R0-B3RT
-    message: "Open <highlight>snapshots/shipment_snapshots.yml</highlight>. In modern dbt, snapshots are defined in YAML, not SQL. You set a name, point it at a model with <highlight>relation:</highlight>, and configure how dbt detects changes. The comments in the file explain the structure."
+  matsuri_warning:
+    id: matsuri_warning
+    character: DR. MATSURI
+    message: "Two things you should know before you write tests. <highlight>shipment_id is supposed to be unique and never null</highlight> — it's the dock crew's manifest number. <highlight>cargo_type</highlight> has a fixed list of values from the Helios cargo catalog; anything else is a typo. And every origin port should map to a planet in the registry. If any of those rules don't hold, we've got a quality issue."
     priority: normal
 
-  first_run:
-    id: first_run
-    character: R0-B3RT
-    message: "Models ran fine. Now set up the snapshot definition. You need to tell dbt what to call it, which model to track, and how to detect changes."
+  data_problem:
+    id: data_problem
+    character: NAV
+    message: "Pipeline built fine. Now click <highlight>raw_shipments</highlight> in the data preview. <highlight>One row has no shipment_id. Two rows share SHP-002. Cargo type 'UNKNOWN_TYPE' shows up where it shouldn't. And origin 'ZZZ' doesn't match any planet.</highlight> Without tests, all four problems just flow downstream invisibly. Time to write the four classic generic tests."
+    priority: high
+
+  identity_tests_done:
+    id: identity_tests_done
+    character: NAV
+    message: "not_null and unique are in. <highlight>Together they make a primary key contract.</highlight> Any row that breaks either one means the source data is malformed, and dbt will scream about it on the next test run. Now let's add the bounded-set check."
     priority: normal
 
-  name_done:
-    id: name_done
-    character: R0-B3RT
-    message: "Good, the snapshot is named. Now add <highlight>relation: ref('stg_shipments')</highlight> to tell dbt which model to snapshot. This is like how models use ref() to declare dependencies."
+  accepted_done:
+    id: accepted_done
+    character: NAV
+    message: "Good. <highlight>accepted_values</highlight> is the test you reach for when a column should only ever be one of a known set. Status fields, cargo types, country codes. The forbidden_values UNKNOWN_TYPE row will fail on the next dbt test — exactly the behavior we want. One more test: relationships."
     priority: normal
 
-  relation_done:
-    id: relation_done
-    character: R0-B3RT
-    message: "Relation is set. Now add the config block. You need <highlight>strategy: timestamp</highlight> (dbt compares timestamps to detect changes), <highlight>unique_key: shipment_id</highlight> (identifies each row), and <highlight>updated_at: updated_at</highlight> (the column dbt watches for changes)."
+  relationships_done:
+    id: relationships_done
+    character: NAV
+    message: "<highlight>relationships</highlight> is dbt's referential integrity test — it checks every value in origin_planet_id actually exists in stg_planets.planet_id. SHP-006's ZZZ won't match anything in the planet registry. That's a foreign key violation the test will catch."
     priority: normal
 
-  config_done:
-    id: config_done
-    character: R0-B3RT
-    message: "Config looks good. Now click <highlight>dbt build</highlight> or <highlight>dbt run</highlight> and <highlight>dbt snapshot</highlight> to run it. On the first run, dbt captures the current state of every row. If you ran it again after the data changed, it would create new versions of the changed rows while keeping the old ones."
+  singular_guide:
+    id: singular_guide
+    character: NAV
+    message: "Four generic tests handle the common shapes — uniqueness, nullability, allowed values, foreign keys. But <highlight>some rules are specific to your domain</highlight>. Example: a shipment that goes from MRD-9 → MRD-9 is nonsense — origin shouldn't equal destination. No generic test catches that. <highlight>Singular tests</highlight> are the answer: a `.sql` file in `tests/` whose SELECT returns the bad rows. dbt picks up everything in tests/ automatically — no YAML registration. Write one for the self-routing case."
     priority: normal
 
-  snapshot_ran:
-    id: snapshot_ran
-    character: R0-B3RT
-    message: "Snapshot ran. Check the preview tab for <highlight>shipment_status_snapshot</highlight>. You'll see the dbt-added columns: dbt_valid_from (when this version started), dbt_valid_to (NULL for current rows), and dbt_scd_id. If a shipment's status changes later, the old row gets a dbt_valid_to timestamp and a new row appears."
+  singular_done:
+    id: singular_done
+    character: NAV
+    message: "Singular test written. <highlight>The shape of a singular test</highlight>: SELECT that returns rows iff the rule is violated. Zero rows = passing, anything else = failing. The file name (`no_self_routing`) becomes the test name in dbt's output. Now click <highlight>dbt test</highlight> and watch the full battery run — four generic plus your singular."
     priority: normal
 
-  final_run_guide:
-    id: final_run_guide
-    character: R0-B3RT
-    message: "Snapshot is set up. Run dbt to make sure all models are still building cleanly."
+  test_results:
+    id: test_results
+    character: NAV
+    message: "There it is. <highlight>Five failing tests, five real data quality issues</highlight>. The models still built — dbt didn't pretend the data was clean — but now anyone reading the test output knows exactly what's broken. <highlight>You didn't fix the data, that's the source team's problem. What you did is make the breakage impossible to miss.</highlight>"
+    priority: high
+
+  build_tip:
+    id: build_tip
+    character: NAV
+    message: "Quick tip — you've been running <highlight>dbt run</highlight> and <highlight>dbt test</highlight> separately. There's a command called <highlight>dbt build</highlight> that does both in one shot, in dependency order: seeds, models, tests, snapshots. From now on you can use that instead."
     priority: normal
 
   level_complete:
     id: level_complete
-    character: R0-B3RT
-    message: "Snapshots are running. Now we have a complete audit trail of every shipment change. If someone modifies a VOSS-flagged shipment's status after the fact, the snapshot catches it. The old data doesn't just disappear anymore. That's how you build accountability into a pipeline."
+    character: NAV
+    message: "Tests are wired up. Bad rows now fail loudly. <highlight>That's the Data Tests lesson.</highlight> Next: documentation — because the test that catches a bad row is twice as useful when the column's description tells you what the row should look like."
     priority: high

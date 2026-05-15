@@ -454,6 +454,94 @@ def _check(c: ObjectiveCheck) -> CheckResult:
             )
         return _ok()
 
+    # ── GameState checks (deploy + schedule levels) ─────────────────────
+
+    if c.type == "git_state":
+        from stellar_dbt.engine.state_manager import load_state
+        state = load_state()
+        value = getattr(state.git, c.key, None)
+        if value is None:
+            return _fail(f"Unknown git state field `{c.key}`.")
+        if not value:
+            return _fail(
+                f"Open the DEPLOY tab and complete the `{c.key}` step in the git flow."
+            )
+        return _ok()
+
+    if c.type == "schedule_state":
+        from stellar_dbt.engine.state_manager import load_state
+        state = load_state()
+        if c.kind and state.schedule.kind != c.kind:
+            actual = state.schedule.kind or "(none)"
+            return _fail(
+                f"Schedule kind is `{actual}` — pick `{c.kind}` in the SCHEDULE tab."
+            )
+        if c.kind is None and not state.schedule.kind:
+            return _fail("No schedule configured yet. Pick one in the SCHEDULE tab.")
+        if state.schedule.run_count < c.min_runs:
+            return _fail(
+                f"Need at least {c.min_runs} scheduled run(s). "
+                f"You've triggered {state.schedule.run_count}. "
+                "Click 'Trigger scheduled run' in the SCHEDULE tab."
+            )
+        return _ok()
+
+    if c.type == "environment_state":
+        from stellar_dbt.engine.state_manager import load_state
+        state = load_state()
+        if not hasattr(state.environment, c.key):
+            return _fail(f"Unknown environment field `{c.key}`.")
+        value = getattr(state.environment, c.key)
+        # Treat "empty" uniformly across str / int / dict / list — empty
+        # value means the player hasn't filled it in yet.
+        is_empty = (
+            value is None
+            or value == ""
+            or value == 0
+            or value == {}
+            or value == []
+        )
+        if is_empty:
+            return _fail(
+                f"`{c.key}` isn't set yet. Open the ENVIRONMENT tab and fill it in."
+            )
+        return _ok()
+
+    if c.type == "schedule_commands":
+        from stellar_dbt.engine.state_manager import load_state
+        state = load_state()
+        # Normalize each command: strip + lowercase + collapse whitespace
+        # so "  dbt   build " matches "dbt build" in `required`.
+        normalized = [" ".join(cmd.strip().lower().split()) for cmd in state.schedule.commands]
+        if len(normalized) < c.min_count:
+            return _fail(
+                f"Job has {len(normalized)} command(s); need at least {c.min_count}. "
+                "Open the SCHEDULE tab and add to the command list."
+            )
+        for req in c.required:
+            req_norm = " ".join(req.strip().lower().split())
+            if not any(req_norm == cmd or req_norm in cmd for cmd in normalized):
+                return _fail(
+                    f"Command list is missing `{req}`. Add it in the SCHEDULE tab "
+                    "(one command per line)."
+                )
+        return _ok()
+
+    if c.type == "schedule_environment":
+        from stellar_dbt.engine.state_manager import load_state
+        state = load_state()
+        if not state.schedule.environment_name:
+            return _fail(
+                "Job isn't pointed at an environment. In the SCHEDULE tab, "
+                "select the environment you configured in the previous level."
+            )
+        if state.schedule.environment_name != state.environment.name:
+            return _fail(
+                f"Job is pointed at `{state.schedule.environment_name}` but no "
+                f"environment with that name exists. Point it at `{state.environment.name or '(your environment)'}`."
+            )
+        return _ok()
+
     return _fail(f"Unknown check type: {c.type}")
 
 

@@ -1,241 +1,74 @@
 id: 1
-title: "First Day at the Federation"
-subtitle: "Build your first models. Connect the dots."
-character: "R0-B3RT"
-xp_reward: 150
+title: "Welcome to Helios"
+subtitle: "Get oriented. Load the data. Meet the team."
+character: "NAV"
+xp_reward: 100
 
 badge:
-  id: first_model
-  emoji: "\U0001f680"
-  name: "First Model"
-  description: "Built your first staging and mart model with proper ref() usage."
-  xp: 150
+  id: arrival
+  emoji: "\U0001f6f0️"
+  name: "Arrival"
+  description: "Stepped onto Helios Waystation and made first contact with the data."
+  xp: 100
 
 locked_files:
   - models/staging/stg_planets.sql
-  - models/sources/federation_sources.yml
+  - models/sources/helios_sources.yml
 
 seed_files:
-  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0\n"
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED\n"
 
-initial_files:
-  models/staging/stg_shipments.sql: |
-    -- stg_shipments.sql
-    -- Staging model for raw cargo shipment data
-    --
-    -- How this works:
-    --   The "with source as (...)" block pulls raw data using source().
-    --   source() tells dbt where the raw table lives so you don't hardcode names.
-    --   The "renamed as (...)" block is where you clean up the columns.
-    --   The final "select * from renamed" outputs your cleaned version.
-    --
-    -- What to do:
-    --   1. Click "raw_shipments" under SOURCE DATA to see the raw columns
-    --   2. Open stg_planets.sql to see a finished example
-    --   3. Fill in the renamed block below
-    --   4. Check the objectives panel for what each column needs
-    --
-    -- Raw columns: shipment_id, origin_planet, dest_planet, cargo_type,
-    --              cargo_mass, departed_at, arrived_at, status, voss_flag
-
-    with source as (
-
-        select * from {{ source('federation', 'raw_shipments') }}
-
-    ),
-
-    renamed as (
-
-        select
-            -- Your columns go here. Check stg_planets.sql for the pattern:
-            --     planet_id,
-            --     planet_name,
-            --     cast(population as bigint) as population
-            *
-
-        from source
-
-    )
-
-    select * from renamed
-
-  models/marts/fct_trade_routes.sql: |
-    -- fct_trade_routes.sql
-    -- Mart model: combines staging models into something analysts can actually use.
-    --
-    -- Quick refresher on ref() vs source():
-    --   source() pulls from raw external tables (used in staging models)
-    --   ref() pulls from other dbt models (used here, in marts)
-    --
-    -- Example:  select * from  ref('stg_shipments')  (wrap in double curly braces)
-    --
-    -- What to do:
-    --   1. Use ref() to pull from stg_shipments and stg_planets
-    --   2. Join them so each shipment gets its origin planet name
-    --   3. Add a summary with count and total mass per origin planet
-    --
-    -- Check the objectives panel for the specifics.
-
-    select 1 as placeholder
-    -- Replace this with your query
+initial_files: {}
 
 objectives:
-  # ── Phase 1: Clean the staging model ──
-  - id: rename_columns
-    label: "Rename origin_planet → origin_planet_id and dest_planet → destination_planet_id"
-    hint: "Use the AS keyword: origin_planet as origin_planet_id. Renaming adds clarity — '_id' signals this is a foreign key."
+  - id: load_seeds
+    label: "Click 'dbt seed' to load the raw cargo data into DuckDB"
+    hint: "There's a dbt seed button in the toolbar at the top. dbt seed loads CSV files from the seeds/ folder into the warehouse so your models have something to work with."
     check:
-      type: duckdb_columns_exist
-      table: stg_shipments
-      columns: [origin_planet_id, destination_planet_id]
+      type: duckdb_row_count
+      table: raw_shipments
+      min_rows: 1
 
-  - id: cast_timestamps
-    label: "Cast departed_at and arrived_at as timestamps"
-    hint: "Either form works: `cast(departed_at as timestamp) as departed_at` or `departed_at::timestamp`. Do the same for arrived_at."
-    # The seed forces these columns to load as VARCHAR (see dbt_project.yml),
-    # so the staging model only ends up with TIMESTAMP columns if the player
-    # actually casts. We check the resulting column types in DuckDB rather
-    # than the SQL syntax, so any valid cast form is accepted.
-    check:
-      type: duckdb_columns_exist
-      table: stg_shipments
-      columns: [departed_at, arrived_at]
-      types:
-        departed_at: TIMESTAMP
-        arrived_at: TIMESTAMP
-
-  - id: cast_cargo_mass
-    label: "Clean cargo_mass → cargo_mass_kg as an integer (strip the 'kg' suffix first)"
-    hint: "The raw values look like '1200kg'. Use replace(cargo_mass, 'kg', '') to strip the suffix, then cast to integer, then alias as cargo_mass_kg."
-    check:
-      type: duckdb_columns_exist
-      table: stg_shipments
-      columns: [cargo_mass_kg]
-      types:
-        cargo_mass_kg: INTEGER
-
-  - id: normalize_status
-    label: "Lowercase status values → status (e.g. 'DELIVERED' becomes 'delivered')"
-    hint: "Use lower(status) as status."
-    check:
-      type: duckdb_column_values
-      table: stg_shipments
-      query: "SELECT * FROM main.stg_shipments WHERE status != lower(status)"
-
-  # ── Phase 2: Build the mart with ref() ──
-  - id: ref_shipments_in_mart
-    label: "Pull shipment data into fct_trade_routes using ref()"
-    hint: "In dbt, source() connects to raw data, but ref() connects models to each other. In your mart, write: {{ ref('stg_shipments') }}"
-    check:
-      type: has_ref_call
-      filename: models/marts/fct_trade_routes.sql
-      target_model: stg_shipments
-
-  - id: ref_planets_in_mart
-    label: "Pull planet data into fct_trade_routes using ref()"
-    hint: "Same pattern: {{ ref('stg_planets') }}. This creates a dependency in the DAG — dbt will build stg_planets before fct_trade_routes automatically."
-    check:
-      type: has_ref_call
-      filename: models/marts/fct_trade_routes.sql
-      target_model: stg_planets
-
-  - id: join_models
-    label: "Join shipments to planets — include origin_planet_name in the output"
-    hint: "Join stg_planets to get the planet name for each shipment's origin. Use: left join stg_planets origin on origin_planet_id = planet_id, then select origin.planet_name as origin_planet_name."
-    check:
-      type: duckdb_columns_exist
-      table: fct_trade_routes
-      columns: [origin_planet_name]
-
-  - id: add_aggregation
-    label: "Add a shipment_count and total_mass_kg aggregation grouped by origin_planet_name"
-    hint: "Use count(*) as shipment_count and sum(cargo_mass_kg) as total_mass_kg with a GROUP BY on origin_planet_name. You can do this in a final CTE or a separate query block."
-    check:
-      type: duckdb_columns_exist
-      table: fct_trade_routes
-      columns: [origin_planet_name, shipment_count, total_mass_kg]
-
-  - id: no_hardcoded_refs
-    label: "No hardcoded table references in the mart"
-    hint: "If you wrote a table name directly (like schema.table), replace it with ref(). That way if the table moves, your model still works."
-    check:
-      type: no_hardcoded_refs
-      filename: models/marts/fct_trade_routes.sql
-
-  # ── Phase 3: Run it ──
-  - id: all_green
-    label: "Run dbt — all models pass"
-    hint: "Click 'dbt run' or press Cmd+Enter to build all models."
+  - id: first_run
+    label: "Click 'dbt run' to build the project's one starter model"
+    hint: "stg_planets.sql is already wired up for you — it pulls from the raw_planets seed and renames a few columns. Click 'dbt run' to materialize it. You'll see dbt resolve dependencies and build it in order."
     check:
       type: all_models_pass
 
 narrative_triggers:
-  # ── Phase 1: Welcome + staging guidance ──
-  - id: nt_level_start
+  - id: nt_welcome
     event: LEVEL_START
     narrative_key: welcome
     once: true
 
-  - id: nt_level_start_2
+  - id: nt_briefing
     event: LEVEL_START
-    narrative_key: staging_guide
+    narrative_key: briefing
     once: true
 
-  # ── After first run ──
+  - id: nt_adlc
+    event: LEVEL_START
+    narrative_key: adlc
+    once: true
+
+  - id: nt_tour
+    event: LEVEL_START
+    narrative_key: tour
+    once: true
+
+  - id: nt_seed_done
+    event: OBJECTIVE_load_seeds_COMPLETE
+    narrative_key: seed_done
+    once: true
+
   - id: nt_first_run_fail
     event: RUN_FAILURE
     narrative_key: first_run_fail
     once: true
 
-  # ── First staging objective done, teach 1:1 pattern ──
-  - id: nt_source_staging_pattern
-    event: OBJECTIVE_rename_columns_COMPLETE
-    narrative_key: source_staging_pattern
-    once: true
-
-  # ── All staging objectives done, transition to mart ──
-  - id: nt_staging_done
-    event: OBJECTIVE_normalize_status_COMPLETE
-    narrative_key: staging_complete
-    once: true
-
-  - id: nt_mart_guide
-    event: OBJECTIVE_normalize_status_COMPLETE
-    narrative_key: mart_guide
-    once: true
-
-  # ── Hardcode detected (only relevant during mart phase) ──
-  - id: nt_hardcode
-    event: HARDCODE_DETECTED
-    narrative_key: hardcode_warning
-    once: true
-
-  # ── First ref wired up, reinforce ref importance ──
-  - id: nt_ref_explain
-    event: OBJECTIVE_ref_shipments_in_mart_COMPLETE
-    narrative_key: ref_importance
-    once: true
-
-  # ── Both refs done, guide join/aggregation ──
-  - id: nt_ref_done
-    event:
-      - OBJECTIVE_ref_planets_in_mart_COMPLETE
-      - OBJECTIVE_ref_shipments_in_mart_COMPLETE
-    narrative_key: join_guide
-    requires:
-      - ref_planets_in_mart
-      - ref_shipments_in_mart
-    once: true
-
-  # ── Phase 3: all green ──
-  - id: nt_all_green
+  - id: nt_run_success
     event: RUN_SUCCESS
-    narrative_key: first_success
-    once: true
-
-  - id: nt_all_green_explain
-    event: RUN_SUCCESS
-    narrative_key: dag_explanation
+    narrative_key: run_success
     once: true
 
   - id: nt_level_complete
@@ -246,72 +79,48 @@ narrative_triggers:
 narrative_script:
   welcome:
     id: welcome
-    character: R0-B3RT
-    message: "Hey, welcome to Meridian-9. I'm R0-B3RT, I'll be walking you through this. The <highlight>morning report for the Outer Rim</highlight> is due at 08:00 and right now there's nothing built. VOSS, the last analyst, left behind a project structure but that's about it. Let's start with the staging model."
+    character: NAV
+    message: "Hey. Welcome aboard <highlight>Helios Waystation</highlight>. I'm NAV — pipeline companion AI, here to walk you through the rebuild. Your predecessor left in a hurry. Like, mid-shift, never came back, took the coffee maker with her hurry. The good news is the warehouse hardware is fine. The bad news is the analytics is a stack of one-off SQL scripts on her desk that I'm legally not allowed to call a pipeline."
     priority: high
 
-  staging_guide:
-    id: staging_guide
-    character: R0-B3RT
-    message: "Open up <highlight>stg_shipments.sql</highlight> and click <highlight>raw_shipments</highlight> under SOURCE DATA so you can see what the raw columns look like. Then check out <highlight>stg_planets.sql</highlight>, it's a finished example of the pattern you'll be following. Basically you need to rename columns, cast types, and clean up the values. The objectives panel has the specifics."
+  briefing:
+    id: briefing
+    character: CDR. HOLT
+    message: "Commander Ena Holt, station ops. Glad you're here. The short version: <highlight>I need a warehouse I can trust before the next supply cycle</highlight>. Cargo manifests, route stats, the works. Right now I'm reading dashboards I have no idea how were built. Take it from raw to ready. NAV will get you started — talk to Dr. Matsuri in logistics if you want to know what any of the data actually means."
+    priority: high
+
+  adlc:
+    id: adlc
+    character: NAV
+    message: "Before we touch anything, quick orientation. The <highlight>Analytics Development Lifecycle</highlight> is how dbt thinks about building a warehouse: <highlight>plan → develop → test → deploy → operate</highlight>. We're going to walk it end to end. Right now we're at \"plan\" — we know what Holt wants and we know roughly what raw data we have. Next stop: get the raw data loaded so we can actually look at it."
+    priority: normal
+
+  tour:
+    id: tour
+    character: NAV
+    message: "Quick tour of your console. <highlight>Left panel</highlight>: file tree — your project lives here. <highlight>Center</highlight>: the code editor, where you'll write SQL and YAML. <highlight>Bottom</highlight>: terminal output and the DAG. <highlight>Top</highlight>: the run buttons. Try <highlight>dbt seed</highlight> first — that loads the CSVs in seeds/ into DuckDB so we have raw tables to query."
+    priority: normal
+
+  seed_done:
+    id: seed_done
+    character: NAV
+    message: "Seeds loaded. <highlight>raw_shipments</highlight> and <highlight>raw_planets</highlight> are now real tables in DuckDB. Click either one under SOURCE DATA to peek at the rows. Don't fix anything yet — just look. That's the \"plan\" step. Next we'll do a baby \"develop\" step: there's one staging model already in the project (stg_planets.sql) just so you can see the shape. Click <highlight>dbt run</highlight> to build it."
     priority: normal
 
   first_run_fail:
     id: first_run_fail
-    character: R0-B3RT
-    message: "That run didn't work, which is totally fine. Check the error output in the terminal, dbt is pretty good about telling you exactly what file and line broke. Seriously though, read the error message, it'll save you a lot of guessing."
+    character: NAV
+    message: "Run failed — that's fine, happens to everyone. Read the error in the terminal. dbt is usually pretty specific about which file and line broke. If the seed step didn't run yet, dbt run will fail because the source tables don't exist — try <highlight>dbt seed</highlight> first."
     priority: normal
 
-  source_staging_pattern:
-    id: source_staging_pattern
-    character: R0-B3RT
-    message: "Quick note on how dbt projects are usually set up. You generally want <highlight>one staging model for each source table</highlight>. So raw_shipments gets stg_shipments, raw_planets gets stg_planets. The staging layer is where all the cleaning happens, that way every model downstream is working with consistent, well-named columns. Nobody else has to worry about the raw data."
+  run_success:
+    id: run_success
+    character: NAV
+    message: "<highlight>stg_planets</highlight> built. Notice dbt figured out the build order on its own — it saw the source() call, made sure raw_planets existed first, then ran the staging model. That's the whole vibe. <highlight>You describe the relationships, dbt handles the order.</highlight> We'll build a lot more of these next level."
     priority: high
-
-  staging_complete:
-    id: staging_complete
-    character: R0-B3RT
-    message: "Staging looks clean. Time to build the mart."
-    priority: high
-
-  mart_guide:
-    id: mart_guide
-    character: R0-B3RT
-    message: "Alright, open <highlight>fct_trade_routes.sql</highlight>. This is a mart, it's where you combine your staging models into something useful. You'll want to use <highlight>ref('stg_shipments')</highlight> and <highlight>ref('stg_planets')</highlight> to pull the data in. That's how dbt knows what depends on what. The comments in the file explain more."
-    priority: normal
-
-  ref_importance:
-    id: ref_importance
-    character: R0-B3RT
-    message: "So the reason we use ref() here instead of just writing the table name directly is pretty important. ref() does two things: it tells dbt <highlight>this model depends on that model</highlight>, so dbt builds them in the right order. And if the underlying table ever moves or gets renamed, <highlight>ref() still resolves correctly</highlight>. Hardcoding table names is how you end up with stuff that breaks silently at 3am."
-    priority: normal
-
-  hardcode_warning:
-    id: hardcode_warning
-    character: R0-B3RT
-    message: "Heads up, you've got a direct table reference in there. Use ref() instead. If you hardcode the name and that table moves, this model just breaks with no warning. ref() handles all of that for you."
-    priority: high
-
-  join_guide:
-    id: join_guide
-    character: R0-B3RT
-    message: "Nice, both refs are wired up. Next step is joining the data. Each shipment has an <highlight>origin_planet_id</highlight> that maps to <highlight>planet_id</highlight> in stg_planets — join on that to pull in the origin planet name. Then for the morning report we need a summary, <highlight>count(*) as shipment_count</highlight> and <highlight>sum(cargo_mass_kg) as total_mass_kg</highlight> grouped by origin planet."
-    priority: normal
-
-  first_success:
-    id: first_success
-    character: R0-B3RT
-    message: "Models compiled. Looking good so far."
-    priority: high
-
-  dag_explanation:
-    id: dag_explanation
-    character: R0-B3RT
-    message: "Check out the output, dbt built your models <highlight>in dependency order</highlight> automatically. Sources first, then staging, then the mart. You didn't have to tell it that. It figured it out from your ref() calls. That's basically the whole point of dbt: <highlight>you define the relationships, it handles the build order</highlight>."
-    priority: normal
 
   level_complete:
     id: level_complete
-    character: R0-B3RT
-    message: "Morning report is done. Command signed off on it. Oh, one thing. <highlight>There's a column called voss_flag in the raw data. No documentation for it anywhere. One of the records has it set to 1.</highlight> Probably nothing, but figured you should know."
+    character: NAV
+    message: "Nice. Project tour done, raw data is loaded, first model built. <highlight>That's Welcome.</highlight> Next level we set up the project properly — sources YAML, project config, the bones. Holt'll be back when there's something to look at."
     priority: high

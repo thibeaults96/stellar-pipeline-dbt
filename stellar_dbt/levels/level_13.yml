@@ -1,0 +1,314 @@
+id: 13
+title: "Package Deal"
+subtitle: "Bonus arc — packages, variables, and not reinventing the wheel."
+character: "NAV"
+xp_reward: 320
+
+badge:
+  id: package_master
+  emoji: "\U0001f4e6"
+  name: "Package Master"
+  description: "Installed dbt_utils, parameterized a model with vars, and stopped writing surrogate keys by hand."
+  xp: 320
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED\nSHP-006,K7B,MRD-9,supplies,2100kg,2847-03-04T08:00:00Z,2847-03-05T06:00:00Z,DELIVERED\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward)
+
+    with source as (
+        select * from {{ source('helios', 'raw_shipments') }}
+    ),
+    renamed as (
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+    {{ config(materialized='table') }}
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  models/sources/helios_sources.yml: |
+    version: 2
+
+    sources:
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records"
+          - name: raw_planets
+            description: "Planetary registry: ports of call along Helios routes"
+
+  packages.yml: |
+    # packages.yml lives at the project root and declares external dbt packages.
+    # Running `dbt deps` downloads each one into the dbt_packages/ folder and
+    # makes its macros + materializations available to your models.
+    #
+    # The most universal package: dbt_utils — Holt's "stop writing the same
+    # SQL helpers" toolkit. It ships generate_surrogate_key, deduplicate,
+    # pivot, date_spine, and dozens of others.
+    #
+    # Format:
+    #
+    #   packages:
+    #     - package: dbt-labs/dbt_utils
+    #       version: 1.3.0
+    #
+    # Replace the TODO below with that block.
+
+    # TODO: declare dbt-labs/dbt_utils as a package.
+
+  dbt_project.yml: |
+    name: stellar_pipeline
+    version: '1.0.0'
+    config-version: 2
+    profile: stellar
+
+    model-paths: ["models"]
+    seed-paths: ["seeds"]
+    test-paths: ["tests"]
+    snapshot-paths: ["snapshots"]
+    target-path: "target"
+    clean-targets: ["target", "dbt_packages"]
+
+    # Force the timestamp-shaped columns in raw_shipments to load as VARCHAR
+    # so the staging cast() in stg_shipments.sql is meaningful. Don't remove
+    # this — earlier levels rely on it.
+    seeds:
+      stellar_pipeline:
+        raw_shipments:
+          +column_types:
+            departed_at: VARCHAR
+            arrived_at: VARCHAR
+
+    # ─────────────────────────────────────────────────────────────────────
+    # TODO: declare project variables under `vars:` below.
+    #
+    # Variables are project-wide config values you can read from any model
+    # with {{ var('name') }}. Use them for thresholds, region names, feature
+    # flags — anything you'd otherwise hardcode in five different places.
+    #
+    # For this level, add a `min_priority_mass` variable set to 1000.
+    # The shape:
+    #
+    #   vars:
+    #     min_priority_mass: 1000
+    #
+    # ─────────────────────────────────────────────────────────────────────
+
+  models/marts/fct_high_mass_shipments.sql: |
+    -- fct_high_mass_shipments.sql
+    --
+    -- Build a mart that:
+    --   1. Pulls from fct_trade_routes with ref()
+    --   2. Uses dbt_utils.generate_surrogate_key to add a deterministic
+    --      hash column called `shipment_key` from [shipment_id, cargo_type]
+    --   3. Filters to rows with cargo_mass_kg >= {{ var('min_priority_mass') }}
+    --
+    -- The point of dbt_utils.generate_surrogate_key: every analytics team
+    -- ends up needing surrogate keys, and writing them by hand
+    -- (md5(concat_ws('|', ...))) is error-prone and varies by warehouse.
+    -- dbt_utils handles it cross-warehouse with one line.
+    --
+    -- The point of {{ var() }}: the threshold lives in dbt_project.yml.
+    -- Change it once, every model that reads it sees the new value.
+    --
+    -- Syntax reminders:
+    --   {{ dbt_utils.generate_surrogate_key(['col1', 'col2']) }} as some_key
+    --   where cargo_mass_kg >= {{ var('min_priority_mass') }}
+
+    select 1 as placeholder
+    -- Replace this with your query
+
+objectives:
+  # ── Phase 1: Install the package ──
+  - id: declare_package
+    label: "Declare dbt-labs/dbt_utils in packages.yml"
+    hint: "Replace the TODO with a `packages:` list containing `- package: dbt-labs/dbt_utils` and `version: 1.3.0`. Indentation matters — `version:` lives under the package entry."
+    check:
+      type: file_contains
+      filename: packages.yml
+      pattern: "package:\\s*dbt-labs/dbt_utils"
+
+  - id: install_package
+    label: "Click 'dbt deps' to install the package"
+    hint: "There's a new `dbt deps` button in the toolbar (only visible on this level). It downloads everything in packages.yml into dbt_packages/. First time it runs, it pulls from dbt Hub — needs internet."
+    # When dbt deps runs successfully, it lays down dbt_packages/dbt_utils/
+    # with its own dbt_project.yml. Checking that file is the cleanest proof
+    # the install actually happened — the manifest check would also work but
+    # only fires after dbt run, not after deps.
+    check:
+      type: file_contains
+      filename: dbt_packages/dbt_utils/dbt_project.yml
+      pattern: "name:\\s*['\"]?dbt_utils"
+
+  # ── Phase 2: Declare a variable ──
+  - id: declare_var
+    label: "Add a `vars:` block to dbt_project.yml with `min_priority_mass: 1000`"
+    hint: "In dbt_project.yml, replace the TODO with `vars:` then `min_priority_mass: 1000` on the next line, indented under it. Variables declared here are readable from any model via `{{ var('name') }}`."
+    check:
+      type: file_contains
+      filename: dbt_project.yml
+      pattern: "vars:[\\s\\S]*?min_priority_mass\\s*:\\s*1000"
+
+  # ── Phase 3: Use both in a model ──
+  - id: use_var
+    label: "Use `{{ var('min_priority_mass') }}` in fct_high_mass_shipments.sql"
+    hint: "Add a `where cargo_mass_kg >= {{ var('min_priority_mass') }}` clause to the model. dbt substitutes the value from dbt_project.yml at compile time."
+    check:
+      type: file_contains
+      filename: models/marts/fct_high_mass_shipments.sql
+      pattern: "\\{\\{\\s*var\\s*\\(\\s*['\"]min_priority_mass['\"]\\s*\\)\\s*\\}\\}"
+
+  - id: use_dbt_utils
+    label: "Call `dbt_utils.generate_surrogate_key` in the same model"
+    hint: "In the SELECT: `{{ dbt_utils.generate_surrogate_key(['shipment_id', 'cargo_type']) }} as shipment_key`. The macro lives in dbt_utils — wouldn't be available without `dbt deps`."
+    # depends_on.macros gets a `macro.dbt_utils.generate_surrogate_key` entry
+    # when dbt actually renders the call. Comments and string literals don't
+    # register.
+    check:
+      type: manifest_model_depends_on_macro
+      model: fct_high_mass_shipments
+      macro_name: generate_surrogate_key
+
+  # ── Phase 4: Run it ──
+  - id: all_green
+    label: "Run dbt — all models pass with the new package + variable wired in"
+    hint: "Click 'dbt run'. The new mart joins the build order alongside the others — dbt resolves dbt_utils macros at compile time and substitutes the var value into the SQL."
+    check:
+      type: all_models_pass
+
+narrative_triggers:
+  - id: nt_intro
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_holt
+    event: LEVEL_START
+    narrative_key: holt_request
+    once: true
+
+  - id: nt_guide
+    event: LEVEL_START
+    narrative_key: packages_guide
+    once: true
+
+  - id: nt_declared
+    event: OBJECTIVE_declare_package_COMPLETE
+    narrative_key: declared
+    once: true
+
+  - id: nt_installed
+    event: OBJECTIVE_install_package_COMPLETE
+    narrative_key: installed
+    once: true
+
+  - id: nt_var_done
+    event: OBJECTIVE_declare_var_COMPLETE
+    narrative_key: var_explain
+    once: true
+
+  - id: nt_macro_done
+    event: OBJECTIVE_use_dbt_utils_COMPLETE
+    narrative_key: macro_payoff
+    once: true
+
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+  - id: nt_finale
+    event: LEVEL_COMPLETE
+    narrative_key: finale
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: NAV
+    message: "Final bonus level. <highlight>Two patterns that show up in every real dbt project</highlight>: importing external packages and using project-level variables. Both live in YAML at the project root. Both keep you from hardcoding things in fifteen places."
+    priority: high
+
+  holt_request:
+    id: holt_request
+    character: CDR. HOLT
+    message: "Quick ask from the ops side — I need a <highlight>deduplicated key</highlight> on every shipment for cross-system tracking. Same shipment, same key, every time. And I want the high-mass cutoff (currently 1000kg) tunable without an engineer editing model code every quarter."
+    priority: normal
+
+  packages_guide:
+    id: packages_guide
+    character: NAV
+    message: "Two new files this level: <highlight>packages.yml</highlight> at the root declares external dbt packages, and <highlight>dbt_project.yml</highlight> gets a `vars:` block we'll add. The workhorse package is <highlight>dbt_utils</highlight> — it ships dozens of cross-warehouse helpers (surrogate keys, dedup, pivots, date series). Open packages.yml first."
+    priority: normal
+
+  declared:
+    id: declared
+    character: NAV
+    message: "Package declared. Nothing actually downloads until you run <highlight>dbt deps</highlight> — that's the command that reads packages.yml and pulls each package into <highlight>dbt_packages/</highlight>. There's a new `dbt deps` button in the toolbar for this level only."
+    priority: normal
+
+  installed:
+    id: installed
+    character: NAV
+    message: "dbt_utils is installed. <highlight>Every macro it ships is now usable from your models</highlight> as `{{ dbt_utils.<macro_name>(...) }}`. The `dbt_packages/` folder is gitignored by convention — packages.yml is the source of truth, deps gets re-run on every CI build."
+    priority: normal
+
+  var_explain:
+    id: var_explain
+    character: NAV
+    message: "Variable set. <highlight>Quick on what vars are good for</highlight>: thresholds, region tags, feature flags, sometimes connection-shape config that varies between dev and prod. Read them with `{{ var('name') }}` in any model. Override them from the CLI with `dbt run --vars '{name: value}'` for one-off runs. Now wire `min_priority_mass` into the new mart."
+    priority: normal
+
+  macro_payoff:
+    id: macro_payoff
+    character: NAV
+    message: "<highlight>generate_surrogate_key is wired up.</highlight> Behind the scenes it expands into an MD5 of the column list, formatted correctly for whichever warehouse you're on — DuckDB, Snowflake, BigQuery, Postgres, all different. Without dbt_utils, every team writes that helper themselves. With it: one line. That's the whole pitch for packages."
+    priority: high
+
+  level_complete:
+    id: level_complete
+    character: NAV
+    message: "Packages installed, variable parameterized, dbt_utils macro doing real work. <highlight>That's the package ecosystem</highlight> — you basically never start a real dbt project without it."
+    priority: high
+
+  finale:
+    id: finale
+    character: NAV
+    message: "<highlight>And that wraps the whole arc</highlight> — every bonus level cleared. Nine core lessons plus four bonus: incremental, snapshots, macros, packages. You can build, ship, schedule, and extend dbt projects now. <highlight>Go do it for real.</highlight>"
+    priority: normal

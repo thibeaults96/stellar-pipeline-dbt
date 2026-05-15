@@ -1,0 +1,290 @@
+id: 9
+title: "Schedule the Refresh"
+subtitle: "Wire a job: commands + environment + schedule, then trigger it."
+character: "NAV"
+xp_reward: 260
+
+badge:
+  id: scheduler
+  emoji: "⏰"
+  name: "Scheduler"
+  description: "Defined a job — a command sequence, an environment, and a schedule — and watched it run."
+  xp: 260
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,loaded_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,2847-03-02T06:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,2847-03-03T07:00:00Z\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED,2847-03-02T19:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,2847-03-04T10:30:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,2847-03-04T22:30:00Z\nSHP-006,K7B,MRD-9,supplies,2100kg,2847-03-04T08:00:00Z,2847-03-05T06:00:00Z,DELIVERED,2847-03-05T06:30:00Z\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward)
+
+    with source as (
+        select * from {{ source('helios', 'raw_shipments') }}
+    ),
+    renamed as (
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+    {{ config(materialized='table') }}
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  models/sources/helios_sources.yml: |
+    version: 2
+
+    sources:
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records (loaded by the scheduled job)"
+            loaded_at_field: loaded_at
+            freshness:
+              warn_after: {count: 24, period: hour}
+              error_after: {count: 48, period: hour}
+          - name: raw_planets
+            description: "Planetary registry: ports of call along Helios routes"
+
+objectives:
+  # ── 1. Point the job at an environment ──
+  - id: pick_environment
+    label: "Point the job at the environment you set up last level (SCHEDULE tab → step 1)"
+    hint: "Open the SCHEDULE tab and pick your environment from the dropdown. A job that isn't bound to an environment has nowhere to run — the platform will refuse to schedule it."
+    check:
+      type: schedule_environment
+
+  # ── 2. Define the command sequence ──
+  - id: add_build_command
+    label: "Add `dbt build` to the job's command list"
+    hint: "In the SCHEDULE tab's command box, type `dbt build` on its own line. This is the workhorse — it seeds, runs, tests, and snapshots in dependency order, in a single command."
+    check:
+      type: schedule_commands
+      required: ["dbt build"]
+
+  - id: add_freshness_command
+    label: "Add `dbt source freshness` to the command list (after the build)"
+    hint: "On a new line below `dbt build`, type `dbt source freshness`. Real production jobs run freshness as a separate step so a freshness warning doesn't block the rest of the pipeline. Order matters here — the scheduler runs commands top to bottom."
+    check:
+      type: schedule_commands
+      required: ["dbt build", "dbt source freshness"]
+      min_count: 2
+
+  - id: add_select_command
+    label: "Add a `dbt run --select stg_shipments+` partial-refresh command"
+    hint: "Add a third line: `dbt run --select stg_shipments+`. The `+` operator means \"this model and everything downstream of it.\" Real-world use: rerunning a fix to a staging model without rebuilding upstream sources or unrelated marts. dbt supports tag selection too (`tag:hourly`), path selection (`staging.+`), and combinations."
+    check:
+      type: schedule_commands
+      required: ["dbt run --select stg_shipments+"]
+
+  # ── 3. Pick when it runs ──
+  - id: pick_schedule
+    label: "Pick a schedule kind (and expression for Interval or Cron)"
+    hint: "Step 3 of the SCHEDULE tab. Four options — Manual / Interval / Cron / On-merge — each documented in the panel. For Helios, `Interval 6h` and `Cron 0 */6 * * *` are both reasonable. No single right answer."
+    check:
+      type: schedule_state
+      kind: null
+      min_runs: 0
+
+  # ── 4. Trigger the first run ──
+  - id: trigger_run
+    label: "Click 'Trigger scheduled run' — fire the job once"
+    hint: "This actually runs your command list in order against the environment. Watch the terminal: you'll see each command execute, dbt's output for each, and the job stop if anything fails."
+    check:
+      type: schedule_state
+      min_runs: 1
+
+  # ── 5. Trigger again — schedules are about repetition ──
+  - id: trigger_again
+    label: "Trigger a second run — schedules are about repetition, not one-shots"
+    hint: "Real production schedules run between every 15 minutes and once a day. The first run loads the warehouse; every later run just keeps it fresh. Click trigger one more time."
+    check:
+      type: schedule_state
+      min_runs: 2
+
+narrative_triggers:
+  - id: nt_intro
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_overview
+    event: LEVEL_START
+    narrative_key: overview
+    once: true
+
+  - id: nt_anatomy
+    event: LEVEL_START
+    narrative_key: anatomy
+    once: true
+
+  - id: nt_env_done
+    event: OBJECTIVE_pick_environment_COMPLETE
+    narrative_key: env_done
+    once: true
+
+  - id: nt_commands_done
+    event: OBJECTIVE_add_freshness_command_COMPLETE
+    narrative_key: commands_done
+    once: true
+
+  - id: nt_select_guide
+    event: OBJECTIVE_add_freshness_command_COMPLETE
+    narrative_key: select_guide
+    once: true
+
+  - id: nt_select_done
+    event: OBJECTIVE_add_select_command_COMPLETE
+    narrative_key: select_payoff
+    once: true
+
+  - id: nt_kind_set
+    event: SCHEDULE_KIND_SET
+    narrative_key: kind_explain
+    once: true
+
+  - id: nt_first_run
+    event: SCHEDULE_RUN_SUCCESS
+    narrative_key: first_run
+    once: true
+
+  - id: nt_failure
+    event: SCHEDULE_RUN_FAILURE
+    narrative_key: run_failed
+    once: true
+
+  - id: nt_second_run
+    event: OBJECTIVE_trigger_again_COMPLETE
+    narrative_key: second_run
+    once: true
+
+  - id: nt_holt
+    event: OBJECTIVE_trigger_again_COMPLETE
+    narrative_key: holt_thanks
+    once: true
+
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+  - id: nt_next
+    event: LEVEL_COMPLETE
+    narrative_key: next_steps
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: NAV
+    message: "Code's merged, environment is configured. <highlight>Now we define a job</highlight> — and \"job\" has a specific meaning here. It's three things bound together: a sequence of dbt commands, an environment to run them in, and a schedule that decides when. Take any one of those away and the platform won't accept it."
+    priority: high
+
+  overview:
+    id: overview
+    character: NAV
+    message: "Open the <highlight>SCHEDULE tab</highlight> at the bottom — it's split into four sections now: <highlight>(1) Environment</highlight>, <highlight>(2) Commands</highlight>, <highlight>(3) When</highlight>, and the <highlight>Trigger</highlight> button. Work top to bottom. The trigger button stays disabled until all three are filled in — same gate the real platform applies."
+    priority: normal
+
+  anatomy:
+    id: anatomy
+    character: NAV
+    message: "Quick anatomy of a typical production job:\n• <highlight>dbt build</highlight> — does the whole pipeline (seed + run + test + snapshot) in dependency order. 90% of jobs are just this.\n• <highlight>dbt source freshness</highlight> — checks how stale your source data is. Usually runs separately so a freshness warn/error doesn't block the build.\n• <highlight>dbt seed</highlight> — only needed when seed files change. Many teams run it once on deploy, not every job.\nYou can chain them. The job runs them top to bottom and stops on the first failure."
+    priority: normal
+
+  env_done:
+    id: env_done
+    character: NAV
+    message: "Environment bound. The job now knows <highlight>where to run</highlight>: which warehouse, which schema, which dbt version, with which env vars. If you ever swap environments (e.g. point this job at staging for testing), you change one dropdown — not the whole job definition."
+    priority: normal
+
+  commands_done:
+    id: commands_done
+    character: NAV
+    message: "Command list looks right. <highlight>dbt build</highlight> handles the meat of the work, <highlight>dbt source freshness</highlight> runs as a separate step so a freshness warning doesn't block downstream models. The scheduler will run them top to bottom and stop on the first failure — a pattern called <highlight>fail-fast</highlight>."
+    priority: normal
+
+  select_guide:
+    id: select_guide
+    character: NAV
+    message: "Worth introducing one more pattern before we wrap commands: <highlight>node selection</highlight>. dbt's `--select` flag lets you target specific models, paths, or tags instead of running the whole project. The basic forms:\n• <highlight>--select model_name</highlight> — that one model\n• <highlight>--select model_name+</highlight> — that model and everything downstream\n• <highlight>--select +model_name</highlight> — that model and everything upstream\n• <highlight>--select tag:hourly</highlight> — every model tagged 'hourly'\n• <highlight>--select staging.+</highlight> — all staging models and their descendants\nAdd a third command line: `dbt run --select stg_shipments+`. Real-world use: rerunning a staging fix without rebuilding the whole pipeline."
+    priority: normal
+
+  select_payoff:
+    id: select_payoff
+    character: NAV
+    message: "Selection wired in. <highlight>The reason this matters in production</highlight>: full builds at scale can take 20+ minutes. A staging-only refresh might take 90 seconds. Selection lets you wire up <highlight>tiered schedules</highlight> — hourly for fast-moving sources, daily for the full pipeline, ad-hoc for hotfixes. Same dbt, different windows."
+    priority: normal
+
+  kind_explain:
+    id: kind_explain
+    character: NAV
+    message: "Schedule kind set. Worth knowing what each one is best at:\n• <highlight>Manual</highlight> — fine for dev. Don't ship to prod.\n• <highlight>Interval</highlight> — easy. \"Every 6h\" stays simple. Drawback: doesn't care that 3am refreshes happen at 3am.\n• <highlight>Cron</highlight> — calendar-aware. Most production schedulers default to this because business cares about hours and days, not raw intervals.\n• <highlight>On-merge</highlight> — every PR merge triggers a build. Tight feedback loop for small projects; thrashing for big ones."
+    priority: normal
+
+  first_run:
+    id: first_run
+    character: NAV
+    message: "First scheduled run completed successfully. <highlight>The platform invoked your command list in order</highlight> — exactly what would happen at the configured cadence in real production. Notice the terminal shows each command separately so when something fails you know which step broke."
+    priority: high
+
+  run_failed:
+    id: run_failed
+    character: NAV
+    message: "Run failed — scroll the terminal to find which command broke. The job <highlight>stops on the first failure</highlight> rather than charging ahead, which keeps a bad upstream from corrupting downstream tables. Fix it and trigger again."
+    priority: high
+
+  second_run:
+    id: second_run
+    character: NAV
+    message: "Two runs in. <highlight>That's the production loop.</highlight> The same job, on a cadence, forever. The scheduler invokes it; if a run fails, on-call gets paged; if a freshness check warns, downstream gets skipped. The pipeline lives in this loop until something breaks loud enough that someone notices."
+    priority: normal
+
+  holt_thanks:
+    id: holt_thanks
+    character: CDR. HOLT
+    message: "I just watched two cycles complete without anyone touching anything. <highlight>That's the thing I needed.</highlight> Before you came on, the only way the refresh happened was if someone remembered. Half the time it didn't."
+    priority: normal
+
+  level_complete:
+    id: level_complete
+    character: NAV
+    message: "Job's defined and triggering on schedule. <highlight>That's the whole shape of orchestration</highlight> — code in main, environment to run in, commands to run, cadence to run on. Helios is officially a self-driving warehouse."
+    priority: high
+
+  next_steps:
+    id: next_steps
+    character: NAV
+    message: "<highlight>That wraps the core dbt Fundamentals arc.</highlight> Welcome → Setup → Models → Sources → Tests → Docs → Ship → Environment → Schedule. Four bonus levels are unlocked: <highlight>incremental models</highlight> for big tables, <highlight>snapshots</highlight> for tracking how data changes, <highlight>macros</highlight> for reusable Jinja, and <highlight>packages</highlight> for installing dbt_utils and parameterizing with vars. Or close the console and go build something."
+    priority: normal

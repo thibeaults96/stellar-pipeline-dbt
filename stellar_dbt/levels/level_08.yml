@@ -1,0 +1,226 @@
+id: 8
+title: "Set Up Production"
+subtitle: "Configure a deployment environment the platform will run jobs against."
+character: "NAV"
+xp_reward: 200
+
+badge:
+  id: env_keeper
+  emoji: "\U0001f9ed"
+  name: "Environment Keeper"
+  description: "Stood up a production environment with a target schema, threads, and a pinned dbt version."
+  xp: 200
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,loaded_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,2847-03-02T06:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,2847-03-03T07:00:00Z\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED,2847-03-02T19:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,2847-03-04T10:30:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,2847-03-04T22:30:00Z\nSHP-006,K7B,MRD-9,supplies,2100kg,2847-03-04T08:00:00Z,2847-03-05T06:00:00Z,DELIVERED,2847-03-05T06:30:00Z\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward)
+
+    with source as (
+        select * from {{ source('helios', 'raw_shipments') }}
+    ),
+    renamed as (
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+    {{ config(materialized='table') }}
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  models/sources/helios_sources.yml: |
+    version: 2
+
+    sources:
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records"
+            loaded_at_field: loaded_at
+            freshness:
+              warn_after: {count: 24, period: hour}
+              error_after: {count: 48, period: hour}
+          - name: raw_planets
+            description: "Planetary registry: ports of call along Helios routes"
+
+objectives:
+  - id: name_environment
+    label: "Name the production environment (ENVIRONMENT tab)"
+    hint: "Open the ENVIRONMENT tab at the bottom of the screen. Give the environment a name — convention is to capitalize it (e.g. `Production`). This is the label the next level's job will point at."
+    check:
+      type: environment_state
+      key: name
+
+  - id: set_git_branch
+    label: "Tie the environment to a git branch (typically `main` for prod)"
+    hint: "Production environments build from `main` — the branch you merged into last level. Dev environments typically point at a long-lived branch like `develop`, or a per-engineer branch. The platform reads dbt code from this branch on every scheduled run, so the environment + branch combo defines exactly what runs in this target."
+    check:
+      type: environment_state
+      key: git_branch
+
+  - id: set_schema
+    label: "Set the target schema (where prod tables get written)"
+    hint: "Convention: prefix the schema name with the environment so prod tables can't collide with dev. Something like `prod_helios` or `analytics_prod`. In real warehouses this is the difference between writing into a shared production schema and an engineer's sandbox."
+    check:
+      type: environment_state
+      key: target_schema
+
+  - id: set_threads
+    label: "Set the thread count (model parallelism for this environment)"
+    hint: "How many models dbt builds in parallel. 4–8 is typical for prod. Higher isn't always faster — past a point the warehouse becomes the bottleneck, not dbt. For Helios, 4 is a fine default."
+    check:
+      type: environment_state
+      key: threads
+
+  - id: pin_dbt_version
+    label: "Pin a dbt version for this environment"
+    hint: "In real deployments you pin a specific dbt version so prod doesn't unexpectedly upgrade between runs and break a model on syntax that used to work. dbt 1.10 is a stable choice for this game."
+    check:
+      type: environment_state
+      key: dbt_version
+
+narrative_triggers:
+  - id: nt_intro
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_holt
+    event: LEVEL_START
+    narrative_key: holt_briefing
+    once: true
+
+  - id: nt_overview
+    event: LEVEL_START
+    narrative_key: overview
+    once: true
+
+  - id: nt_name_done
+    event: OBJECTIVE_name_environment_COMPLETE
+    narrative_key: name_done
+    once: true
+
+  - id: nt_branch_done
+    event: OBJECTIVE_set_git_branch_COMPLETE
+    narrative_key: branch_done
+    once: true
+
+  - id: nt_schema_done
+    event: OBJECTIVE_set_schema_COMPLETE
+    narrative_key: schema_done
+    once: true
+
+  - id: nt_threads_done
+    event: OBJECTIVE_set_threads_COMPLETE
+    narrative_key: threads_done
+    once: true
+
+  - id: nt_version_done
+    event: OBJECTIVE_pin_dbt_version_COMPLETE
+    narrative_key: version_done
+    once: true
+
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+  - id: nt_next
+    event: LEVEL_COMPLETE
+    narrative_key: next_steps
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: NAV
+    message: "Code's merged. <highlight>But code by itself doesn't run.</highlight> The platform needs a place to run it — a configured target tied to a specific git branch, with its own schema, parallelism settings, and pinned dbt version. That's an <highlight>environment</highlight>. We're going to set one up for production before we wire up the schedule."
+    priority: high
+
+  holt_briefing:
+    id: holt_briefing
+    character: CDR. HOLT
+    message: "Quick rule from ops: prod tables go in a <highlight>separate schema</highlight> from anything else. I don't want an engineer accidentally writing test data into the table I'm reading from at 6am. Whatever you set up here, make sure it's isolated."
+    priority: normal
+
+  overview:
+    id: overview
+    character: NAV
+    message: "Open the <highlight>ENVIRONMENT tab</highlight> at the bottom. Five fields to fill in:\n• <highlight>Name</highlight> — what the scheduler calls this environment\n• <highlight>Git branch</highlight> — the branch this environment builds from (prod tracks `main`)\n• <highlight>Target schema</highlight> — where dbt writes tables\n• <highlight>Threads</highlight> — model parallelism\n• <highlight>dbt version</highlight> — pinned, on purpose\nIn the real dbt platform these live on the deployment environment record. Jobs point at them by name."
+    priority: normal
+
+  name_done:
+    id: name_done
+    character: NAV
+    message: "Environment named. <highlight>This is the label the next level's job will reference</highlight> — pointing a job at a missing environment is one of the most common deploy mistakes, so platforms are strict about it."
+    priority: normal
+
+  branch_done:
+    id: branch_done
+    character: NAV
+    message: "Branch tied to the environment. <highlight>Every scheduled run pulls fresh from this branch</highlight>, so prod always tracks `main` — the code you just merged into last level. In dev you might point at a long-lived `develop` branch, or per-engineer branches so each engineer's environment runs their own work. <highlight>One environment, one branch</highlight> — that pairing is the contract between your code and your warehouse."
+    priority: normal
+
+  schema_done:
+    id: schema_done
+    character: NAV
+    message: "Schema set. <highlight>One environment, one schema</highlight> is the rule. In dev each engineer typically gets their own schema (`dev_alex`, `dev_kai`) — that's how five people can work on the same project without overwriting each other's tables. Prod gets a shared one everyone reads from."
+    priority: normal
+
+  threads_done:
+    id: threads_done
+    character: DR. MATSURI
+    message: "Quick PSA on threads — <highlight>more isn't always faster.</highlight> Past 8 or so, the warehouse becomes the bottleneck and the extra parallelism just means more queries fighting for the same compute. Start low and benchmark before you crank it. 4 is a good default for Helios's volume."
+    priority: normal
+
+  version_done:
+    id: version_done
+    character: NAV
+    message: "dbt version pinned. <highlight>The point isn't using the newest dbt</highlight> — it's making sure your prod environment doesn't silently upgrade between Tuesday and Wednesday and start failing on syntax that used to work. Pin it, test new versions in dev first, promote when ready."
+    priority: normal
+
+  level_complete:
+    id: level_complete
+    character: NAV
+    message: "Production environment is configured. <highlight>The platform has a target to point at.</highlight> Now we need to actually point something at it."
+    priority: high
+
+  next_steps:
+    id: next_steps
+    character: NAV
+    message: "Next level: define the <highlight>job</highlight>. A job is a sequence of dbt commands pointed at a specific environment, run on a specific schedule. You'll wire one up that points at the environment you just set up."
+    priority: normal

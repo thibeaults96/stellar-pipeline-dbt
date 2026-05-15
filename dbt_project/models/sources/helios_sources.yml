@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: helios
+    description: "Raw cargo telemetry from Helios Waystation receivers"
+    schema: main
+    tables:
+      - name: raw_shipments
+        description: "Cargo shipment records"
+      - name: raw_planets
+        description: "Planetary registry: ports of call along Helios routes"

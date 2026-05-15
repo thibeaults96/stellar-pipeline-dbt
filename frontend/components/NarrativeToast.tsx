@@ -3,8 +3,9 @@ import { useState, useEffect, useRef } from 'react'
 import type { NarrativeEvent } from '@/hooks/useGameApi'
 
 const CHARACTER_COLORS: Record<string, string> = {
-  'R0-B3RT': '#00ff9d',
-  'VOSS': '#c8d8e8',
+  'NAV': '#00ff9d',
+  'CDR. HOLT': '#ffb74d',
+  'DR. MATSURI': '#a78bfa',
 }
 
 export type ToastEntry = { key: number; narrative: NarrativeEvent }

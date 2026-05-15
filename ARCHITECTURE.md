@@ -65,31 +65,28 @@ dbt project configuration. Sets project name (`stellar_pipeline`), paths for mod
 dbt connection profile. Points at a local DuckDB file (`stellar.duckdb`). One thread, dev target.
 
 ### `seeds/raw_shipments.csv`
-Source data for shipments. Overwritten by each level with level-specific data (Level 1: 5 clean rows, Level 2: 6 rows with NULLs and loaded_at, Level 3: adds UNKNOWN_TYPE cargo, Level 4+: adds updated_at).
+Cargo shipment seed data. Overwritten by each level with level-appropriate rows (Level 1: 5 clean rows for the project tour, Level 4: adds `loaded_at` for freshness, Level 5: adds NULL/duplicate/UNKNOWN_TYPE/bad-FK rows so tests have something to catch, Level 8+: adds `updated_at` for incremental/snapshot work).
 
 ### `seeds/raw_planets.csv`
-Source data for planets. 5 rows including Null Meridian (NM-00) — uncharted, not a Federation member. Same across all levels.
+Planetary registry. 5 rows including Null Meridian (NM-00) — uncharted, not a federation member. Same across all levels.
 
-### `models/sources/federation_sources.yml`
-dbt source definition. Points at the seed tables in the `main` schema. Overwritten by levels that need freshness config.
+### `models/sources/helios_sources.yml`
+dbt source definition. Points the `helios` source at the seed tables in the `main` schema. Most levels ship their own version via `initial_files`; the loader writes a default if a level doesn't override.
 
 ### `models/staging/stg_planets.sql`
 Locked reference model. Shows the CTE staging pattern. Present in every level as a read-only example.
 
 ### `models/staging/stg_shipments.sql`
-Player-editable staging model. Starts as a skeleton in Level 1, carried forward with solutions in later levels.
+Player-editable staging model. Skeleton in Level 3 (First Models), carried forward with the solution in later levels.
 
 ### `models/marts/fct_trade_routes.sql`
-Player-editable mart model. Placeholder in Level 1, pre-filled in later levels.
+Player-editable mart model. Placeholder in Level 3, pre-filled in later levels as the carry-forward solution.
 
-### `models/marts/fct_voss_investigation.sql`
-Level 6 investigation model. Player builds the VOSS investigation query here.
+### `models/marts/fct_shipment_log.sql` (Level 8 bonus)
+Player-built incremental model. Demonstrates `materialized='incremental'`, `unique_key`, and `is_incremental()`.
 
-### `macros/flag_suspicious.sql`
-Level 6 macro file. Player defines a reusable Jinja macro here.
-
-### `snapshots/` (created by Level 5)
-Not committed to the repo. Created by the level loader when Level 5 starts. Player writes YAML snapshot definitions here.
+### `snapshots/` (Level 9 bonus)
+Not committed to the repo. Created by the level loader when Level 9 starts. Player writes YAML snapshot definitions here.
 
 ---
 
@@ -239,29 +236,55 @@ Loads level YAML and applies to the dbt project. `apply_level()`:
 3. Writes level-specific seed files
 4. Writes level-specific initial files (models, macros, snapshots, YAML configs)
 
-### `level_01.yml` — "First Day at the Federation"
-Teaches: staging models, `source()`, `ref()`, column renaming/casting/cleaning, joins, GROUP BY aggregation, DAG build order, 1:1 source-staging pattern.
-10 objectives. Result-based DuckDB checks validate actual model output (columns, types, values).
+The 7 core levels mirror the 7 hands-on lessons of the official **dbt Fundamentals** course. Levels 8–9 form a bonus *Advanced Materializations* arc.
 
-### `level_02.yml` — "Something's Wrong with Kepler-7b"
-Teaches: `not_null` and `unique` tests, `dbt test` command, `dbt build` (combines run+test+seeds+snapshots), source freshness monitoring.
-4 objectives. Introduces the `dbt build` concept via narrative after first test.
+### `level_01.yml` — "Welcome to Helios"
+*Maps to: Welcome + Analytics Development Lifecycle.*
+Teaches: project tour, ADLC framing, `dbt seed`, first `dbt run` against the locked stg_planets reference model. 2 objectives. NAV (pipeline AI) and CDR. HOLT (stakeholder) introduce themselves.
 
-### `level_03.yml` — "The Smuggler's Ledger"
-Teaches: model and column descriptions in YAML, `accepted_values` tests, dbt docs.
-6 objectives. Seed data includes an UNKNOWN_TYPE cargo that tests should catch.
+### `level_02.yml` — "Boot the Pipeline"
+*Maps to: Set Up dbt.*
+Teaches: sources YAML, declaring raw tables under `tables:`, how dbt resolves `source('helios', '...')` at compile time. 4 objectives. Ships a deliberately under-declared sources YAML so the player has to add raw_shipments and raw_planets themselves; the locked stg_planets.sql fails to compile until both are declared, which is the teaching moment.
 
-### `level_04.yml` — "The Refresh Crisis"
-Teaches: `materialized='incremental'`, `unique_key`, `is_incremental()` filter, `{{ this }}` reference.
-5 objectives. Seed data includes `updated_at` column.
+### `level_03.yml` — "First Models"
+*Maps to: Models.*
+Teaches: staging + marts pattern, `source()`, `ref()`, column rename/cast/normalize, joins, GROUP BY, DAG build order, the 1:1 source-staging convention, and **inline materialization config** (`{{ config(materialized='table') }}` at the top of `fct_trade_routes.sql`). 11 objectives — the highest-volume level, this is the core "writing dbt SQL" beat. DR. MATSURI shows up to brief the cargo data domain.
 
-### `level_05.yml` — "The Time Ledger"
-Teaches: dbt snapshots using modern YAML syntax (not old Jinja blocks), `strategy: timestamp`, `unique_key`, `relation:`, `dbt snapshot` command.
-5 objectives. Uses `snapshot_ran` check that verifies the snapshot table exists in DuckDB.
+### `level_04.yml` — "The Source of Truth"
+*Maps to: Sources.*
+Teaches: `loaded_at_field`, freshness `warn_after` / `error_after` thresholds, running `dbt source freshness` to surface stale raw data, lineage in the DAG. 4 objectives. Seed adds `loaded_at` column. Uses `has_freshness_config` (structural YAML check) plus `source_freshness_ran` to confirm dbt actually executed the check.
 
-### `level_06.yml` — "The Clean Handoff"
-Teaches: Jinja macros (`{% macro %}` / `{% endmacro %}`), reusable logic, CASE WHEN, calling macros from models.
-7 objectives. Resolves the VOSS storyline with a 5-part epilogue (R0-B3RT reveals the smuggling operation, VOSS speaks for the first and only time).
+### `level_05.yml` — "Trust but Verify"
+*Maps to: Data Tests.*
+Teaches: all four generic tests — `not_null`, `unique`, `accepted_values`, `relationships` — plus **singular tests** (a `.sql` file in `tests/` whose SELECT returns rows iff a business rule is violated). 8 objectives. Seed contains deliberately broken rows so each test catches something real: a NULL shipment_id, a duplicate shipment_id, an UNKNOWN_TYPE cargo, an origin_planet_id pointing at a non-existent planet, and SHP-008 routing MRD-9 → MRD-9 (origin == destination — caught by the singular test). `dbt test` ends with 5 failing tests, which is the desired outcome.
+
+### `level_06.yml` — "Tell the Story"
+*Maps to: Documentation.*
+Teaches: model + column descriptions, doc blocks (`{% docs key %}` ... `{% enddocs %}` in `.md` files), `{{ doc('key') }}` references from YAML. 6 objectives. Ships a stub `models/_docs.md` for the player to fill in with a `cargo_type` doc block.
+
+### `level_07.yml` — "Ship It"
+*Maps to: Deployment (code side).*
+Teaches: `dbt build` end-to-end as the deployment command, **simulated git promotion** (stage → commit → PR → merge to main), with extra narrative beats on branches/HEAD, the staging area, CI as a concept, code review, and what "remote main" means. 4 objectives: run dbt build, then git commit / open PR / merge. (Materialization config is taught earlier — inline in L3 — to mirror dbt Fundamentals' lesson order. Source freshness lives in L4 and as a job command in L9, not here — running it doesn't actually gate a code deploy, so framing it as one was misleading.) The DEPLOY tab in the bottom pane drives the git flow — see *DeployPanel.tsx*.
+
+### `level_08.yml` — "Set Up Production"
+*Maps to: Deployment (environment side).*
+Teaches: what a dbt deployment environment is and what fields it carries — name, git branch, target schema, threads, pinned dbt version. 5 objectives, one per field. Player configures the environment in the ENVIRONMENT tab. State persists in `GameState.environment` (an `EnvironmentState` Pydantic model). The next level's job will point at this environment by name — pointing a job at a missing environment fails the `schedule_environment` check.
+
+### `level_09.yml` — "Schedule the Refresh"
+*Maps to: Orchestration / Next Steps.*
+Teaches: a "job" = commands + environment + schedule, the four common scheduling kinds (Manual / Interval / Cron / On-merge), fail-fast behavior. 6 objectives: pick the environment, add `dbt build` to the command list, add `dbt source freshness`, pick a schedule kind, trigger once, trigger again. The player types real dbt commands into the SCHEDULE tab; on trigger, each command is parsed and dispatched through `dbt_runner.*` in order, stopping on the first failure. State persists in `GameState.schedule` — see `ScheduleState` (kind, expression, commands, environment_name, run_count, last_run_output). SCHEDULE tab drives it — see *SchedulePanel.tsx*.
+
+### `level_10.yml` — "The Refresh Crisis" (bonus)
+Teaches: `materialized='incremental'`, `unique_key`, `is_incremental()` filter, `{{ this }}` reference. 5 objectives. Seed adds `updated_at` column.
+
+### `level_11.yml` — "The Time Ledger" (bonus)
+Teaches: dbt snapshots using the modern YAML syntax, `strategy: timestamp`, `unique_key`, `relation:`, the `dbt snapshot` command, and the auto-added `dbt_valid_from` / `dbt_valid_to` / `dbt_scd_id` columns. 6 objectives.
+
+### `level_12.yml` — "The Priority Pipeline" (bonus)
+Teaches: Jinja macros — `{% macro %}` / `{% endmacro %}` syntax, parameters substituted with `{{ arg }}`, the DRY benefit of centralizing reusable SQL. 5 objectives. Player writes a `cargo_priority` macro in `macros/cargo_priority.sql` that categorizes cargo (medical → critical, fuel_cells/humanitarian_aid → high, else standard), then calls it from a new `fct_priority_routes` mart to produce a `priority` column. Uses `manifest_macro_defined` (verifies dbt parsed the macro) and `manifest_model_depends_on_macro` (verifies the mart actually calls it through Jinja, not via a comment or string literal).
+
+### `level_13.yml` — "Package Deal" (bonus)
+Teaches: dbt packages (`packages.yml` + `dbt deps`) and project variables (`vars:` block + `{{ var('name') }}`). 6 objectives. Player declares `dbt-labs/dbt_utils` in packages.yml, runs `dbt deps` (a new toolbar button — only surfaces on L13), adds a `vars:` block to dbt_project.yml with `min_priority_mass: 1000`, then writes a `fct_high_mass_shipments` mart that uses both `dbt_utils.generate_surrogate_key` for a deterministic hash key and `{{ var('min_priority_mass') }}` to filter rows. Verified via `file_contains` on `dbt_packages/dbt_utils/dbt_project.yml` (proves deps actually ran) and `manifest_model_depends_on_macro` on `generate_surrogate_key` (proves the macro was rendered, not just mentioned in a comment).
 
 ---
 
@@ -274,7 +297,7 @@ Empty. Package marker.
 Rich-based rendering for the CLI. Panels for narratives, objectives, dbt output, badges, status. Converts `<highlight>` tags to Rich markup.
 
 ### `theme.py`
-Character color mapping (R0-B3RT = green, VOSS = white) and status colors.
+Character color mapping (NAV = green, CDR. HOLT = yellow, DR. MATSURI = magenta) and status colors.
 
 ---
 
@@ -325,7 +348,7 @@ Animated title screen. Typewriter text crawl with sci-fi backstory, starfield ef
 Main layout. Three-column grid: left sidebar (files + objectives), center (editor + bottom pane), right (narrative + terminal). Manages all state. Calls `/api/start/1` on mount (always starts Level 1 fresh). Handles level switching, file opening with error recovery, save with error surfacing in terminal, keyboard shortcuts (Cmd+Enter for dbt run, Escape to close preview).
 
 ### `StatusBar.tsx`
-Top bar. Logo, level selector buttons (1-6, color-coded by completion), level title, XP progress bar, badges, reset button (↺), "dbt run" button with loading state.
+Top bar. Logo, level selector buttons (1-13, color-coded by completion — 9 core Fundamentals levels plus 4 bonus levels covering incremental, snapshots, macros, and packages), level title, XP progress bar, badges, reset button (↺), "dbt seed" + "dbt run" buttons with loading state. On L13 a "dbt deps" button also appears for installing packages.
 
 ### `FileTree.tsx`
 Left sidebar. Groups files by folder, lock icons for read-only. SOURCE DATA section lists seed tables with row counts — clicking opens DataPreview.
@@ -337,7 +360,7 @@ Left sidebar. Checkbox indicators (▸ current, ✓ done), labels, per-objective
 Monaco editor. Custom "stellar-dark" theme. Saves on blur and Cmd+S. READ ONLY badge for locked files. Keyed on `filePath` for clean switching (not content hash).
 
 ### `DataPreview.tsx`
-Source data table. Column headers, NULL in red, voss_flag=1 in amber. Close with × or Escape.
+Source data table. Column headers, NULL in red. Close with × or Escape.
 
 ### `TerminalPanel.tsx`
 Right sidebar. dbt output with ANSI stripped. Four action buttons: "dbt run", "dbt test", "dbt build", "dbt snapshot". Loading state disables all buttons.
@@ -349,10 +372,19 @@ Right sidebar COMMS panel. Codec-style single-transmission view:
 - prev/next buttons for browsing the current batch
 - "log" button toggles a compact scrollable history (newest first, click to jump)
 - New messages auto-display starting from the first message in the batch
-- R0-B3RT is the primary character (green), VOSS appears once in the Level 6 epilogue (white)
+- NAV (green) is the primary pipeline-companion narrator. CDR. HOLT (amber) is the station commander/stakeholder. DR. MATSURI (violet) is the chief logistician and domain expert.
 
 ### `BottomPane.tsx`
-Tabbed pane below editor. DAG tab (lineage graph) and PREVIEW tab (query model results). Model selector buttons are dynamically loaded from the manifest. Refreshes after each dbt action.
+Tabbed pane below editor. DAG tab (lineage graph), PREVIEW tab (query model results), TERMINAL tab (dbt stdout). Level-specific tabs: **DEPLOY** appears on L7, **ENVIRONMENT** on L8, **SCHEDULE** on L9. Model selector buttons in PREVIEW load dynamically from the manifest.
+
+### `DeployPanel.tsx`
+L7-only tab driving the simulated git promotion flow. Renders the four-step pipeline visualization (stage → commit → PR → merge) and per-step controls. Each click hits a `/api/git/*` endpoint and refreshes panel state. CI pass/fail is derived from the last `run_results.json` — if the player hasn't run `dbt build` cleanly, the PR shows red and Merge is disabled until they fix it.
+
+### `EnvironmentPanel.tsx`
+L8-only tab driving the deployment environment configuration. Form fields for name / git branch / target schema / threads / dbt version. Each save hits `POST /api/env` (partial updates supported — pass only the fields you're changing). Field-level hints mirror the actual production tradeoffs (why pinning a dbt version matters, why threads have diminishing returns, why prod tracks `main`, etc.).
+
+### `SchedulePanel.tsx`
+L9-only tab. Four sections, top to bottom: (1) point the job at the environment configured in L8 (dropdown populated from `/api/env`), (2) type the dbt commands the job runs (multi-line textarea, recognized commands shown inline), (3) pick a schedule kind from four cards with explainers, (4) trigger button (disabled until env + commands + schedule are all set). The trigger hits `/api/schedule/trigger`, which parses the player's command list and dispatches each through `dbt_runner.*` in order, stopping on the first failure — fail-fast behavior, same as a real scheduler.
 
 ### `DagView.tsx`
 Pure SVG DAG. Topological layer layout. Sources get dashed borders, models get solid. Colors: green (success), red (error), gray (pending). No external graph library.

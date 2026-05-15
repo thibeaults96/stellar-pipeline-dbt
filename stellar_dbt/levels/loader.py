@@ -29,16 +29,21 @@ def list_levels() -> list[dict]:
 
 def apply_level(level: LevelConfig) -> None:
     """Write level files to the dbt project and re-seed if needed."""
-    # Clear stale artifacts and database so level transitions are clean
-    target_dir = DBT_PROJECT_DIR / "target"
-    if target_dir.exists():
-        shutil.rmtree(target_dir)
+    # Clear stale artifacts and database so level transitions are clean.
+    # dbt_packages/ is included so the L13 deps-install objective is
+    # repeatable on a reset — otherwise the file_contains check would
+    # already pass on entry.
+    for dirname in ("target", "dbt_packages"):
+        d = DBT_PROJECT_DIR / dirname
+        if d.exists():
+            shutil.rmtree(d)
     if DB_PATH.exists():
         DB_PATH.unlink()
 
-    # Clean models, macros, and snapshots directories then rebuild from initial_files.
-    # This prevents leftover files from other levels breaking things.
-    for dirname in ("models", "macros", "snapshots"):
+    # Clean per-level directories then rebuild from initial_files. Prevents
+    # leftover files from other levels (a singular test from L5, a packages
+    # file from L13, etc.) breaking the current level.
+    for dirname in ("models", "macros", "snapshots", "tests"):
         d = DBT_PROJECT_DIR / dirname
         if d.exists():
             shutil.rmtree(d)
@@ -71,26 +76,26 @@ def _write_base_files() -> None:
     marts_dir.mkdir(parents=True, exist_ok=True)
 
     # Source definition (Level 1 default — levels can override via initial_files)
-    (sources_dir / "federation_sources.yml").write_text("""version: 2
+    (sources_dir / "helios_sources.yml").write_text("""version: 2
 
 sources:
-  - name: federation
-    description: "Raw telemetry data from Federation sensor arrays"
+  - name: helios
+    description: "Raw cargo telemetry from Helios Waystation receivers"
     schema: main
     tables:
       - name: raw_shipments
-        description: "Cargo shipment records from all registered vessels"
+        description: "Cargo shipment records from inbound and outbound vessels"
       - name: raw_planets
-        description: "Planetary registry and resource data"
+        description: "Planetary registry: ports of call along Helios routes"
 """)
 
     # stg_planets (always locked, always the same)
     (staging_dir / "stg_planets.sql").write_text("""-- stg_planets.sql
--- Federation staging model: planetary registry
+-- Helios staging model: planetary registry
 
 with source as (
 
-    select * from {{ source('federation', 'raw_planets') }}
+    select * from {{ source('helios', 'raw_planets') }}
 
 ),
 

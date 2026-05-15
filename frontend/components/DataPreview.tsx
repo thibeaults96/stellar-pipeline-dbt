@@ -45,13 +45,10 @@ export default function DataPreview({ data, onClose }: {
                 {data.columns.map(col => {
                   const val = row[col]
                   const isNull = val === null || val === undefined || val === ''
-                  const isVossFlag = col === 'voss_flag' && (val === 1 || val === '1')
                   return (
                     <td key={col}
                       className={`px-2 py-1 border-b border-panel-border/50 whitespace-nowrap ${
-                        isNull ? 'text-stellar-red italic'
-                        : isVossFlag ? 'text-stellar-amber'
-                        : 'text-stellar-text'
+                        isNull ? 'text-stellar-red italic' : 'text-stellar-text'
                       }`}>
                       {isNull ? 'NULL' : String(val)}
                     </td>

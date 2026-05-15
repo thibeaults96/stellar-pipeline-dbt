@@ -1,15 +1,15 @@
 id: 6
-title: "The Clean Handoff"
-subtitle: "Build a macro. Close the investigation."
-character: "R0-B3RT"
-xp_reward: 250
+title: "Tell the Story"
+subtitle: "Descriptions, doc blocks, and a self-explaining warehouse."
+character: "NAV"
+xp_reward: 220
 
 badge:
-  id: federation_analyst
-  emoji: "\U0001f31f"
-  name: "Federation Analyst"
-  description: "Completed the Stellar Pipeline training. Built macros, models, tests, docs, and incremental pipelines."
-  xp: 250
+  id: data_librarian
+  emoji: "\U0001f4d6"
+  name: "Data Librarian"
+  description: "Wrote model and column descriptions and shipped a doc block — the warehouse explains itself now."
+  xp: 220
 
 locked_files:
   - models/staging/stg_planets.sql
@@ -17,209 +17,200 @@ locked_files:
   - models/marts/fct_trade_routes.sql
 
 seed_files:
-  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,updated_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T14:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0,2847-03-03T08:00:00Z\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-03-04T00:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0,2847-03-04T10:00:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0,2847-03-04T22:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-05T00:00:00Z\nSHP-007,TAU-4,MRD-9,supplies,3100kg,2847-03-05T06:00:00Z,,IN_TRANSIT,0,2847-03-05T06:00:00Z\nSHP-008,MRD-9,NM-00,classified,1500kg,2847-03-05T12:00:00Z,,IN_TRANSIT,1,2847-03-05T12:00:00Z\nSHP-009,K7B,NM-00,humanitarian_aid,600kg,2847-03-06T02:00:00Z,,IN_TRANSIT,1,2847-03-06T02:00:00Z\n"
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED\n"
 
 initial_files:
   models/staging/stg_shipments.sql: |
     -- stg_shipments.sql (carried forward)
 
     with source as (
-        select * from {{ source('federation', 'raw_shipments') }}
+        select * from {{ source('helios', 'raw_shipments') }}
     ),
     renamed as (
-        select shipment_id, origin_planet as origin_planet_id,
-            dest_planet as destination_planet_id, cargo_type,
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
             cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
             cast(departed_at as timestamp) as departed_at,
             cast(arrived_at as timestamp) as arrived_at,
-            lower(status) as status, voss_flag, updated_at
+            lower(status) as status
         from source
     )
     select * from renamed
 
   models/marts/fct_trade_routes.sql: |
     -- fct_trade_routes.sql (carried forward)
+    {{ config(materialized='table') }}
 
     with shipments as (
         select * from {{ ref('stg_shipments') }}
     ), planets as (
         select * from {{ ref('stg_planets') }}
     ), routes as (
-        select s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
-            s.departed_at, s.arrived_at, s.voss_flag,
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
             origin.planet_name as origin_planet_name,
             dest.planet_name as destination_planet_name,
-            dest.is_federation_member as dest_is_federation
+            origin.sector as origin_sector
         from shipments s
         left join planets origin on s.origin_planet_id = origin.planet_id
         left join planets dest on s.destination_planet_id = dest.planet_id
     )
     select * from routes
 
-  macros/flag_suspicious.sql: |
-    -- flag_suspicious.sql
-    --
-    -- This is a MACRO file. Macros are reusable Jinja functions that you can
-    -- call from any model. They live in the macros/ folder.
-    --
-    -- Your job: create a macro called flag_suspicious that takes a column
-    -- name for the result and returns a CASE WHEN expression that flags
-    -- suspicious shipments.
-    --
-    -- A shipment is suspicious if ANY of these are true:
-    --   - voss_flag = 1
-    --   - dest_is_federation = false
-    --   - cargo_type = 'classified'
-    --
-    -- Macro syntax:
-    --
-    --   {% macro example_macro(column_name) %}
-    --       case
-    --           when ... then 1
-    --           else 0
-    --       end as {{ column_name }}
-    --   {% endmacro %}
-    --
-    -- Notes on the delimiters:
-    --   {% ... %} wraps Jinja control statements (macro, endmacro, if, for).
-    --   {{ ... }} substitutes a value into the rendered SQL — here, the
-    --   parameter `column_name` becomes the alias on the resulting column.
-    --
-    -- Calling it from a model looks like:
-    --
-    --   {{ flag_suspicious('is_suspicious') }}
-    --
-    -- Fill in the WHEN conditions and you're good to go.
-
-  models/marts/fct_voss_investigation.sql: |
-    -- fct_voss_investigation.sql
-    --
-    -- Build an investigation model using your macro.
-    --
-    -- Steps:
-    --   1. Pull from fct_trade_routes using ref()
-    --   2. Call your flag_suspicious macro to add the is_suspicious column
-    --   3. Filter to only suspicious rows
-    --   4. Add a risk_level column: 'high' if cargo_type is 'classified', else 'medium'
-    --
-    -- Check the objectives panel for specifics.
-
-    select 1 as placeholder
-
-  models/sources/federation_sources.yml: |
+  models/sources/helios_sources.yml: |
     version: 2
 
     sources:
-      - name: federation
-        description: "Raw telemetry data from Federation sensor arrays"
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
         schema: main
         tables:
           - name: raw_shipments
-            description: "Cargo shipment records from all registered vessels"
+            description: "Cargo shipment records from inbound and outbound vessels"
           - name: raw_planets
-            description: "Planetary registry and resource data"
+            description: "Planetary registry: ports of call along Helios routes"
+
+  models/staging/_stg_shipments.yml: |
+    version: 2
+
+    models:
+      - name: stg_shipments
+        # TODO: add a model description. One sentence — what does this model produce?
+
+        columns:
+          - name: shipment_id
+            # TODO: add a column description. What is this column for?
+
+          - name: cargo_type
+            # TODO: add a column description.
+            # Consider using a `{{ doc('cargo_type') }}` doc block reference here
+            # so the long-form explanation lives in a Markdown file instead.
+            # If you do, your description: line will look like:
+            #   description: "{{ doc('cargo_type') }}"
+
+          - name: status
+            description: "Lowercased shipment status — 'delivered' or 'in_transit'."
+
+  models/marts/_fct_trade_routes.yml: |
+    version: 2
+
+    models:
+      - name: fct_trade_routes
+        # TODO: add a model description. Analysts read this in the docs site.
+        columns:
+          - name: shipment_id
+            description: "Unique shipment identifier carried through from staging."
+          - name: origin_planet_name
+            description: "Human-readable name of the origin planet."
+          - name: destination_planet_name
+            description: "Human-readable name of the destination planet."
+
+  models/_docs.md: |
+    {# Doc blocks live in .md files anywhere under models/. Reference them from
+       a YAML description with {{ doc('block_name') }}, and dbt swaps the
+       rendered markdown in at compile time. Useful for long-form context that
+       would clutter a YAML.
+
+       Replace the TODO below with a docs block named `cargo_type`. The shape:
+
+           {% docs cargo_type %}
+           Cargo category as logged by the dock crew. Allowed values:
+           supplies, equipment, humanitarian_aid, fuel_cells, medical.
+           {% enddocs %}
+
+       Then in _stg_shipments.yml, set cargo_type's description to:
+           "{{ doc('cargo_type') }}"
+    #}
+
+    {# TODO: write a {% docs cargo_type %} ... {% enddocs %} block below. #}
 
 objectives:
-  # Phase 1: Create the macro
-  - id: create_macro
-    label: "Create a flag_suspicious macro in macros/flag_suspicious.sql"
-    hint: "Define the macro with: {% macro flag_suspicious(column_name) %} case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }} {% endmacro %}"
-    # dbt only registers the macro in manifest.macros if it parses correctly
-    # — open `{% macro %}` blocks, malformed Jinja, or SQL keywords stuck
-    # in the example comments won't satisfy this check.
+  - id: describe_stg_model
+    label: "Add a description to the stg_shipments model"
+    hint: "In _stg_shipments.yml, replace the model-level TODO with a `description:` line. Write at least a sentence — what does this model produce, and from where?"
     check:
-      type: manifest_macro_defined
-      macro_name: flag_suspicious
+      type: manifest_model_description
+      model: stg_shipments
+      min_length: 20
 
-  - id: macro_has_case_when
-    label: "The macro should contain the CASE WHEN logic"
-    hint: "Inside the macro, write: case when voss_flag = 1 or dest_is_federation = false or cargo_type = 'classified' then 1 else 0 end as {{ column_name }}"
-    # The macro body is freeform SQL inside Jinja, so we still need to peek
-    # at its text to confirm the analytic logic is present. Scoped to the
-    # active SQL only (comments stripped) so the example block at the top
-    # of the starter file can't pass this on its own.
+  - id: describe_shipment_id
+    label: "Add a description to the shipment_id column"
+    hint: "Under shipment_id, add `description: \"Unique identifier for each shipment\"` (or similar). Descriptions show up in dbt's docs site and in the manifest your downstream tooling can read."
     check:
-      type: file_contains_active_sql
-      filename: macros/flag_suspicious.sql
-      pattern: "case\\s+when[\\s\\S]*voss_flag[\\s\\S]*then\\s+1[\\s\\S]*else\\s+0[\\s\\S]*end"
+      type: manifest_column_description
+      model: stg_shipments
+      column: shipment_id
+      min_length: 15
 
-  # Phase 2: Build the investigation model
-  - id: ref_trade_routes
-    label: "Pull data from fct_trade_routes using ref()"
-    hint: "Start with: select * from {{ ref('fct_trade_routes') }}"
+  - id: write_doc_block
+    label: "Write a `{% docs cargo_type %}` block in models/_docs.md"
+    hint: "Open _docs.md and add: `{% docs cargo_type %}` ... markdown content ... `{% enddocs %}`. Doc blocks are reusable long-form descriptions that live outside the YAML."
     check:
-      type: has_ref_call
-      filename: models/marts/fct_voss_investigation.sql
-      target_model: fct_trade_routes
+      type: file_contains
+      filename: models/_docs.md
+      pattern: "\\{%\\s*docs\\s+cargo_type\\s*%\\}"
 
-  - id: use_macro
-    label: "Call the flag_suspicious macro in the investigation model, name the column is_suspicious"
-    hint: "In your SELECT, add: {{ flag_suspicious('is_suspicious') }}. This calls your macro and names the output column is_suspicious."
-    # Manifest depends_on.macros only includes the macro if dbt actually
-    # rendered the call site. A bare `flag_suspicious(` in a SQL string
-    # literal or comment won't satisfy this.
+  - id: reference_doc_block
+    label: "Reference the doc block from cargo_type's description"
+    hint: "In _stg_shipments.yml, set cargo_type's description to `\"{{ doc('cargo_type') }}\"`. dbt swaps in the rendered markdown when it compiles."
     check:
-      type: manifest_model_depends_on_macro
-      model: fct_voss_investigation
-      macro_name: flag_suspicious
+      type: manifest_column_description
+      model: stg_shipments
+      column: cargo_type
+      min_length: 25
 
-  - id: add_risk_level
-    label: "Add a risk_level column: 'high' for classified cargo, 'medium' otherwise"
-    hint: "Add another CASE WHEN: case when cargo_type = 'classified' then 'high' else 'medium' end as risk_level"
+  - id: describe_mart_model
+    label: "Add a description to the fct_trade_routes mart"
+    hint: "In _fct_trade_routes.yml, add a `description:` line for the mart. Analysts hit marts more than staging models, so this one matters."
     check:
-      type: duckdb_columns_exist
-      table: fct_voss_investigation
-      columns: [risk_level, is_suspicious]
-
-  - id: filter_suspicious
-    label: "Filter to only show suspicious rows (is_suspicious = 1)"
-    hint: "Add: where is_suspicious = 1. You may need to wrap your query in a CTE first."
-    check:
-      type: duckdb_row_count
-      table: fct_voss_investigation
-      min_rows: 1
-      where: "is_suspicious = 1"
+      type: manifest_model_description
+      model: fct_trade_routes
+      min_length: 20
 
   - id: all_green
-    label: "Run dbt and all models pass"
-    hint: "Click 'dbt run' to build everything."
+    label: "Click 'dbt run' — confirm descriptions compile cleanly into the manifest"
+    hint: "Descriptions are metadata — they don't change query behavior but they have to parse. If a YAML quote is unbalanced or a doc block reference is misspelled, dbt errors at compile time."
     check:
       type: all_models_pass
 
 narrative_triggers:
-  - id: nt_start
+  - id: nt_intro
     event: LEVEL_START
     narrative_key: intro
     once: true
 
-  - id: nt_start_guide
+  - id: nt_doc_guide
     event: LEVEL_START
-    narrative_key: macro_guide
+    narrative_key: doc_guide
     once: true
 
   - id: nt_first_run
     event: FIRST_RUN
-    narrative_key: first_run
+    narrative_key: first_run_note
     once: true
 
-  - id: nt_macro_done
-    event: OBJECTIVE_macro_has_case_when_COMPLETE
-    narrative_key: macro_done
+  - id: nt_stg_desc_done
+    event: OBJECTIVE_describe_shipment_id_COMPLETE
+    narrative_key: stg_desc_done
     once: true
 
-  - id: nt_ref_done
-    event: OBJECTIVE_ref_trade_routes_COMPLETE
-    narrative_key: use_macro_guide
+  - id: nt_doc_block_guide
+    event: OBJECTIVE_describe_shipment_id_COMPLETE
+    narrative_key: doc_block_guide
     once: true
 
-  - id: nt_macro_used
-    event: OBJECTIVE_use_macro_COMPLETE
-    narrative_key: risk_level_guide
+  - id: nt_doc_block_done
+    event: OBJECTIVE_reference_doc_block_COMPLETE
+    narrative_key: doc_block_done
     once: true
 
-  - id: nt_filter_done
-    event: OBJECTIVE_filter_suspicious_COMPLETE
-    narrative_key: almost_there
+  - id: nt_docs_site
+    event: OBJECTIVE_describe_mart_model_COMPLETE
+    narrative_key: docs_site_explain
     once: true
 
   - id: nt_complete
@@ -227,107 +218,51 @@ narrative_triggers:
     narrative_key: level_complete
     once: true
 
-  # ── Epilogue: resolves the VOSS story ──
-  - id: nt_epilogue_1
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_1
-    once: true
-
-  - id: nt_epilogue_2
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_2
-    once: true
-
-  - id: nt_epilogue_3
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_3
-    once: true
-
-  - id: nt_epilogue_voss
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_voss
-    once: true
-
-  - id: nt_epilogue_final
-    event: LEVEL_COMPLETE
-    narrative_key: epilogue_final
-    once: true
-
 narrative_script:
   intro:
     id: intro
-    character: R0-B3RT
-    message: "Alright, last one. I've been looking at those VOSS-flagged shipments and something is definitely going on. I need you to build an investigation model, but not with one-off logic. Build a <highlight>macro</highlight> that flags suspicious shipments, something we can reuse across the whole fleet."
+    character: NAV
+    message: "Pipeline works, tests catch the obvious problems. <highlight>But nobody can read this project.</highlight> Three weeks from now someone's going to open stg_shipments and have no idea what cargo_type means or whether status is uppercase or lowercase. <highlight>Documentation isn't decoration — it's the part of the warehouse that scales past you.</highlight>"
     priority: high
 
-  macro_guide:
-    id: macro_guide
-    character: R0-B3RT
-    message: "Open <highlight>macros/flag_suspicious.sql</highlight>. Macros are reusable Jinja functions. You define them once, then call them from any model. The comments in the file explain the syntax. Start by defining the macro with the CASE WHEN logic, then we'll use it in the investigation model."
+  doc_guide:
+    id: doc_guide
+    character: NAV
+    message: "Open <highlight>_stg_shipments.yml</highlight>. You'll see TODOs where descriptions belong: at the model level, and on individual columns. dbt reads these into the manifest and renders them in the docs site. Start with the model itself, then shipment_id. Use real sentences — placeholder values like 'x' or 'TODO' won't satisfy the checks."
     priority: normal
 
-  first_run:
-    id: first_run
-    character: R0-B3RT
-    message: "Models built fine. Now check fct_trade_routes in the preview. You'll see voss_flag, destination names, and whether the destination is a Federation member. Those are the fields your macro needs to check."
+  first_run_note:
+    id: first_run_note
+    character: NAV
+    message: "Models built. <highlight>None of them have descriptions yet</highlight>, which means anyone reading the docs site sees just the column names. Fix that first."
     priority: normal
 
-  macro_done:
-    id: macro_done
-    character: R0-B3RT
-    message: "Macro looks good. Now open <highlight>fct_voss_investigation.sql</highlight> and build the investigation model. Start by pulling from fct_trade_routes with ref(), then call your macro with <highlight>{{ flag_suspicious('is_suspicious') }}</highlight> in the SELECT."
+  stg_desc_done:
+    id: stg_desc_done
+    character: NAV
+    message: "Good descriptions on the staging model. Now for something fancier — <highlight>doc blocks</highlight>. When a description gets long (say, the full enum of cargo types with examples), you don't want it crammed into the YAML. dbt lets you write Markdown blocks in `.md` files and reference them from the YAML."
     priority: normal
 
-  use_macro_guide:
-    id: use_macro_guide
-    character: R0-B3RT
-    message: "ref() is wired up. Now call your macro in the SELECT list. The syntax is: {{ flag_suspicious('is_suspicious') }}. That'll expand into the CASE WHEN you wrote and name the result column is_suspicious."
+  doc_block_guide:
+    id: doc_block_guide
+    character: NAV
+    message: "Open <highlight>models/_docs.md</highlight>. There's a TODO comment showing the shape. Write a docs block named <highlight>cargo_type</highlight> with a Markdown description of the column. Then in _stg_shipments.yml, set cargo_type's description to <highlight>\"{{ doc('cargo_type') }}\"</highlight>. dbt resolves it at compile time."
     priority: normal
 
-  risk_level_guide:
-    id: risk_level_guide
-    character: R0-B3RT
-    message: "Flag is working. Now add a risk level too. Add a column called <highlight>risk_level</highlight>: 'high' if the cargo_type is 'classified', 'medium' for everything else. Then filter the whole thing to only show rows where is_suspicious = 1."
+  doc_block_done:
+    id: doc_block_done
+    character: NAV
+    message: "Doc block is wired up. <highlight>The advantage of this pattern: one description, used anywhere.</highlight> If cargo_type shows up in three different marts, all three can reference the same doc block and they stay in sync forever. Finish out the mart description and we're done."
     priority: normal
 
-  almost_there:
-    id: almost_there
-    character: R0-B3RT
-    message: "Filter's in. Run it and let's see what turns up."
-    priority: high
+  docs_site_explain:
+    id: docs_site_explain
+    character: DR. MATSURI
+    message: "I'll be honest, the part of dbt I use most isn't the SQL — it's <highlight>dbt docs generate</highlight>. It compiles all of this into a browsable site with the DAG, every column with its description, every test, every freshness contract. When a new analyst asks me what a column means, I send them the docs URL. <highlight>That's the win.</highlight>"
+    priority: normal
 
   level_complete:
     id: level_complete
-    character: R0-B3RT
-    message: "Four shipments flagged. All going to Null Meridian. Two with classified cargo, two labeled humanitarian aid that nobody authorized. Every single one has voss_flag = 1. I'm forwarding this to Federation Command."
+    character: NAV
+    message: "Models, columns, doc blocks — every piece of this warehouse can now explain itself. <highlight>That's the Documentation lesson.</highlight> Three levels left before this thing is fully in production: shipping the code (commit, PR, merge), configuring the deployment environment, then wiring up a scheduled job. Holt wants the scheduled refresh up before next cycle."
     priority: high
-
-  epilogue_1:
-    id: epilogue_1
-    character: R0-B3RT
-    message: "Okay, I just got a response back from Command. They pulled the shipping manifests. Those humanitarian aid shipments to Null Meridian? There's no aid program for that planet. It's not even in the Federation. Someone inside logistics command was routing cargo there and burying it in the data."
-    priority: low
-
-  epilogue_2:
-    id: epilogue_2
-    character: R0-B3RT
-    message: "They also figured out why VOSS disappeared. He flagged these exact shipments six months ago in an internal report. Two days later his access was revoked and he was reassigned to a listening post in the outer rim. No explanation. The report was deleted from the system. But he left something behind."
-    priority: low
-
-  epilogue_3:
-    id: epilogue_3
-    character: R0-B3RT
-    message: "The voss_flag column. It was never part of the original schema. VOSS added it to the source data before he was removed. A dead drop, hidden in plain sight. He was betting that the next analyst would notice a column that shouldn't exist, look at the data, and ask why certain shipments were flagged. <highlight>That analyst was you.</highlight>"
-    priority: low
-
-  epilogue_voss:
-    id: epilogue_voss
-    character: VOSS
-    message: "...I wasn't sure anyone would look that closely. Most people just build the pipeline and move on. You actually read the data. <highlight>That's the whole job. The pipeline isn't plumbing. It's how the truth gets from the source to the people who need it.</highlight> Thanks for not looking away, AE-7."
-    priority: low
-
-  epilogue_final:
-    id: epilogue_final
-    character: R0-B3RT
-    message: "For the record: you built a dbt project from scratch. Staging, marts, tests, documentation, incremental models, macros, and an investigation layer that cracked open a smuggling operation. <highlight>Not bad for a recruit.</highlight> I've closed out your training file. You're certified. Go build something."
-    priority: low

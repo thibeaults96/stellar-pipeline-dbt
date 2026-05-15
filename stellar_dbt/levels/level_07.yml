@@ -1,0 +1,331 @@
+id: 7
+title: "Ship It"
+subtitle: "Production build and the merge to main."
+character: "NAV"
+xp_reward: 280
+
+badge:
+  id: shipped_it
+  emoji: "\U0001f6f0️"
+  name: "Shipped It"
+  description: "Took the warehouse from dev to a production-shaped configuration with a real dbt build."
+  xp: 280
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,loaded_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,2847-03-02T06:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,2847-03-03T07:00:00Z\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED,2847-03-02T19:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,2847-03-04T10:30:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,2847-03-04T22:30:00Z\nSHP-006,K7B,MRD-9,supplies,2100kg,2847-03-04T08:00:00Z,2847-03-05T06:00:00Z,DELIVERED,2847-03-05T06:30:00Z\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward)
+
+    with source as (
+        select * from {{ source('helios', 'raw_shipments') }}
+    ),
+    renamed as (
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name,
+            origin.sector as origin_sector
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  models/sources/helios_sources.yml: |
+    version: 2
+
+    sources:
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records from inbound and outbound vessels"
+            loaded_at_field: loaded_at
+            freshness:
+              warn_after: {count: 24, period: hour}
+              error_after: {count: 48, period: hour}
+          - name: raw_planets
+            description: "Planetary registry: ports of call along Helios routes"
+
+  models/staging/_stg_shipments.yml: |
+    version: 2
+
+    models:
+      - name: stg_shipments
+        description: "Cleaned cargo shipment data — one row per shipment, with normalized types and renamed foreign keys."
+        columns:
+          - name: shipment_id
+            description: "Unique identifier for each cargo shipment."
+            tests:
+              - not_null
+              - unique
+          - name: cargo_type
+            description: "Category of cargo carried."
+            tests:
+              - accepted_values:
+                  values: [supplies, equipment, humanitarian_aid, fuel_cells, medical]
+          - name: origin_planet_id
+            description: "Foreign key to stg_planets.planet_id (origin port)."
+            tests:
+              - relationships:
+                  to: ref('stg_planets')
+                  field: planet_id
+          - name: status
+            description: "Lowercased shipment status — 'delivered' or 'in_transit'."
+
+  models/marts/_fct_trade_routes.yml: |
+    version: 2
+
+    models:
+      - name: fct_trade_routes
+        description: "One row per shipment with origin and destination planet metadata joined in. Analyst-facing trade-route mart."
+        columns:
+          - name: shipment_id
+            description: "Unique shipment identifier carried through from staging."
+          - name: origin_planet_name
+            description: "Human-readable name of the origin planet."
+          - name: destination_planet_name
+            description: "Human-readable name of the destination planet."
+
+objectives:
+  - id: dbt_build
+    label: "Click 'dbt build' — the production command that seeds + runs + tests in one shot"
+    hint: "dbt build is the deployment command. It runs seeds, models, tests, and snapshots in dependency order, and stops downstream work if anything fails. If the whole build passes, the warehouse is shippable."
+    # `model_passes` on the leaf confirms the full chain compiled without
+    # gating on every later git objective the way `all_models_pass` would.
+    # The player needs a green build *before* the git flow, not after, so
+    # the gating in `_check_all` is the wrong direction here.
+    check:
+      type: model_passes
+      model: fct_trade_routes
+
+  # ── Git promotion flow (DEPLOY tab in the bottom pane) ──
+  - id: git_commit
+    label: "Commit your changes on the feature branch (DEPLOY tab → Commit)"
+    hint: "Open the DEPLOY tab at the bottom of the screen. You're on `feature/deploy-pipeline`. Stage the changed files, write a commit message, and click Commit. A commit is a labeled snapshot of your work — separate from being merged."
+    check:
+      type: git_state
+      key: committed
+
+  - id: git_open_pr
+    label: "Open a pull request from your branch to main"
+    hint: "Click 'Open PR' in the DEPLOY tab. A pull request asks main's owners to review and accept your commit. In a real repo this triggers CI — here it auto-runs against your last dbt build."
+    check:
+      type: git_state
+      key: pr_opened
+
+  - id: git_merge
+    label: "Merge the PR to main once CI is green"
+    hint: "Once your PR shows CI passing, click 'Merge'. Merge is the moment your work officially becomes part of production. The scheduled refresh on main will pick it up on its next run."
+    check:
+      type: git_state
+      key: merged
+
+narrative_triggers:
+  - id: nt_intro
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_briefing
+    event: LEVEL_START
+    narrative_key: holt_briefing
+    once: true
+
+
+  - id: nt_build_done
+    event: OBJECTIVE_dbt_build_COMPLETE
+    narrative_key: build_done
+    once: true
+
+  - id: nt_envs_explain
+    event: OBJECTIVE_dbt_build_COMPLETE
+    narrative_key: envs_explain
+    once: true
+
+  - id: nt_git_guide
+    event: OBJECTIVE_dbt_build_COMPLETE
+    narrative_key: git_guide
+    once: true
+
+  - id: nt_branch_explain
+    event: OBJECTIVE_dbt_build_COMPLETE
+    narrative_key: branch_explain
+    once: true
+
+  - id: nt_staged
+    event: GIT_STAGE
+    narrative_key: staged
+    once: true
+
+  - id: nt_committed
+    event: GIT_COMMIT
+    narrative_key: committed
+    once: true
+
+  - id: nt_pr_opened
+    event: GIT_PR_OPENED
+    narrative_key: pr_opened
+    once: true
+
+  - id: nt_ci_explainer
+    event: GIT_PR_OPENED
+    narrative_key: ci_explainer
+    once: true
+
+  - id: nt_review_explainer
+    event: GIT_PR_OPENED
+    narrative_key: review_explainer
+    once: true
+
+  - id: nt_merged
+    event: GIT_MERGED
+    narrative_key: merged
+    once: true
+
+  - id: nt_remote_explainer
+    event: GIT_MERGED
+    narrative_key: remote_explainer
+    once: true
+
+  - id: nt_level_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+  - id: nt_holt_signoff
+    event: LEVEL_COMPLETE
+    narrative_key: holt_signoff
+    once: true
+
+  - id: nt_next_steps
+    event: LEVEL_COMPLETE
+    narrative_key: next_steps
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: NAV
+    message: "<highlight>Everything works in dev. Now we ship it.</highlight> Two pieces of shipping the code: a clean <highlight>dbt build</highlight> end-to-end (seed + run + test + snapshot), and a <highlight>git promotion</highlight> from your branch to main. Environment configuration and scheduling are the next two levels — first we ship the code."
+    priority: high
+
+  holt_briefing:
+    id: holt_briefing
+    character: CDR. HOLT
+    message: "Walked over to say I see what you've built. Sources declared, tests catching the bad rows, docs on every column. <highlight>This is the warehouse I asked for.</highlight> Wire it up to deploy and we'll set the scheduled refresh on the platform side. I want the next supply cycle running off this."
+    priority: high
+
+  build_done:
+    id: build_done
+    character: NAV
+    message: "<highlight>dbt build</highlight> ran clean. Seeds loaded, models built, tests passed, all in dependency order. That's the deploy command. In production you'd run this in CI on every PR, then again on a schedule against prod."
+    priority: high
+
+  envs_explain:
+    id: envs_explain
+    character: NAV
+    message: "Quick aside on environments. Right now you've got <highlight>one target</highlight> — local DuckDB. In a real deployment you'd have at least two: <highlight>dev</highlight> (each engineer writes to their own schema) and <highlight>prod</highlight> (a shared, scheduled target). <highlight>profiles.yml</highlight> is where those live. Same `dbt build` command, different target, different database."
+    priority: normal
+
+  git_guide:
+    id: git_guide
+    character: NAV
+    message: "Local build is green. But \"works on my machine\" isn't deployed. Open the <highlight>DEPLOY tab</highlight> at the bottom — that's the git side of this. You're on a feature branch right now; the work has to travel <highlight>branch → commit → pull request → CI → merge to main</highlight> before it counts as shipped. Stage what you changed, commit it, open a PR, and merge once CI is green."
+    priority: high
+
+  branch_explain:
+    id: branch_explain
+    character: NAV
+    message: "Real fast on branches before we go further. <highlight>A branch is a named pointer to a chain of commits.</highlight> `main` is the branch that represents production. <highlight>feature/deploy-pipeline</highlight> is the branch you're working on — it diverged from main when you started this work. Your edits exist on your branch and nowhere else until you merge. <highlight>This is how multiple people can work on the same codebase without overwriting each other</highlight> — each person on their own branch, then merges happen one at a time."
+    priority: normal
+
+  staged:
+    id: staged
+    character: NAV
+    message: "Staged. <highlight>Quick note on what \"staging\" actually means in git</highlight> — it's a holding area between your working files and the next commit. You can edit five files and only stage three; only those three end up in the commit. We staged all changes here because it's a small batch, but in real work you'll often want to commit logical chunks separately for cleaner history."
+    priority: normal
+
+  committed:
+    id: committed
+    character: NAV
+    message: "Commit lands. <highlight>A commit is a labeled snapshot of your work</highlight> — your message says what changed and why, and the commit gets a hash you can always come back to. Nobody else has seen it yet — it's still <highlight>local to your branch</highlight>. The commit exists in your repo, not on the remote, not on main. That's the next step."
+    priority: normal
+
+  pr_opened:
+    id: pr_opened
+    character: NAV
+    message: "PR opened. Three things happen automatically when you push a branch and open a PR: your commit gets pushed to the <highlight>remote repository</highlight> (the shared copy everyone else can see), <highlight>CI fires</highlight>, and reviewers get notified. <highlight>The PR is the conversation</highlight> — review, discussion, approval. Merging is the moment of truth."
+    priority: normal
+
+  ci_explainer:
+    id: ci_explainer
+    character: NAV
+    message: "Quick on CI. <highlight>Continuous Integration</highlight> means: every time a PR opens or updates, a fresh machine spins up, checks out your branch, and runs your tests. For a dbt project, CI usually runs <highlight>dbt build</highlight> against a clean schema — same thing you ran locally, but in a controlled environment nobody else's changes can contaminate. If it passes, you have evidence the merge is safe. If it fails, the PR is gated and the error is right there in the check."
+    priority: normal
+
+  review_explainer:
+    id: review_explainer
+    character: DR. MATSURI
+    message: "And one more piece — <highlight>code review</highlight>. CI catches mechanical breakage; review catches things only a human notices. Like: does this model name match what we call it everywhere else? Is this aggregation actually what Holt asked for? Two engineers, ten minutes — and most production bugs never make it past that filter."
+    priority: normal
+
+  merged:
+    id: merged
+    character: NAV
+    message: "Merged to main. <highlight>Your changes are now part of the production codebase.</highlight> The next scheduled refresh — once we set one up — will pick them up. In the real world this is the only moment that matters; everything before it is just safety rails."
+    priority: high
+
+  remote_explainer:
+    id: remote_explainer
+    character: NAV
+    message: "And to close the loop on git: <highlight>main on the remote</highlight> is the source of truth — that's the version every CI run, every deploy, every other engineer's fresh clone reads from. The local main on your laptop is just a cached copy. When you `git pull main` you're updating your cache. When the platform schedules a job, it always pulls fresh from the remote. That's how the orchestrator stays in sync with reality."
+    priority: normal
+
+  level_complete:
+    id: level_complete
+    character: NAV
+    message: "Pipeline is built, committed, and merged. Holt's reading her morning report off your tables. Nothing on Helios is held together with scripts on someone's desk anymore. <highlight>That's deployment.</highlight>"
+    priority: high
+
+  holt_signoff:
+    id: holt_signoff
+    character: CDR. HOLT
+    message: "I've got numbers I trust. The crew has freshness alerts they don't have to babysit. The docs site is bookmarked on every dashboard in ops. <highlight>You did what I hired you for in seven shifts</highlight>. Two more pieces — get the production environment configured and a scheduled refresh wired up, then take the rest of the cycle off."
+    priority: normal
+
+  next_steps:
+    id: next_steps
+    character: NAV
+    message: "Code is merged. <highlight>But code by itself doesn't run.</highlight> The platform needs a configured target to point at, then a schedule that decides when. Next level: set up the production environment. Then we'll wire a job at it."
+    priority: normal

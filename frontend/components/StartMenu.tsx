@@ -3,24 +3,22 @@
 import { useState, useEffect } from 'react'
 
 const CRAWL_LINES = [
-  { text: "FEDERATION LOGISTICS COMMAND", style: "dim", delay: 0 },
-  { text: "OUTER RIM SECTOR // MERIDIAN-9 STATION", style: "dim", delay: 400 },
+  { text: "HELIOS WAYSTATION", style: "dim", delay: 0 },
+  { text: "DEEP-SPACE CARGO HUB // EXOPLANETARY TRADE LANE", style: "dim", delay: 400 },
   { text: "", style: "dim", delay: 800 },
   { text: "YEAR 2847", style: "accent", delay: 1200 },
   { text: "", style: "dim", delay: 1400 },
-  { text: "The Federation's cargo tracking system is broken.", style: "normal", delay: 1800 },
-  { text: "Raw shipment data is coming in, but nobody's done anything with it.", style: "normal", delay: 2600 },
-  { text: "No models. No tests. No reports.", style: "normal", delay: 3400 },
-  { text: "The morning briefing is in a few hours.", style: "normal", delay: 4200 },
-  { text: "", style: "dim", delay: 4800 },
-  { text: "The last analyst, someone named VOSS,", style: "normal", delay: 5200 },
-  { text: "set up the project structure and then disappeared.", style: "normal", delay: 6000 },
-  { text: "There are flags in the data that nobody can explain.", style: "amber", delay: 6800 },
-  { text: "", style: "dim", delay: 7400 },
-  { text: "You're Recruit AE-7.", style: "bright", delay: 7800 },
-  { text: "You're going to learn dbt.", style: "bright", delay: 8400 },
-  { text: "You're going to build the pipeline.", style: "bright", delay: 9000 },
-  { text: "And you might figure out what VOSS left behind.", style: "accent", delay: 9600 },
+  { text: "Helios moves a thousand shipments a day.", style: "normal", delay: 1800 },
+  { text: "And every report Commander Holt reads is wrong.", style: "normal", delay: 2600 },
+  { text: "", style: "dim", delay: 3200 },
+  { text: "The warehouse is a graveyard of one-off SQL scripts.", style: "normal", delay: 3600 },
+  { text: "The last data engineer left mid-shift. Took the coffee maker.", style: "normal", delay: 4400 },
+  { text: "Nothing's tested. Nothing's documented. Nothing's trusted.", style: "normal", delay: 5200 },
+  { text: "", style: "dim", delay: 5800 },
+  { text: "You're the new analyst.", style: "bright", delay: 6200 },
+  { text: "You're going to learn dbt.", style: "bright", delay: 6800 },
+  { text: "You're going to rebuild the pipeline.", style: "bright", delay: 7400 },
+  { text: "Holt wants it ready before the next supply cycle.", style: "accent", delay: 8000 },
 ]
 
 const STYLE_MAP: Record<string, string> = {
@@ -131,7 +129,7 @@ export default function StartMenu({ onStart }: { onStart: () => void }) {
           BEGIN MISSION
         </button>
         <div className="mt-3 text-center font-mono-tech text-xs text-stellar-text-dim">
-          Level 1 // First Day at the Federation
+          Level 1 // Welcome to Helios
         </div>
       </div>
 

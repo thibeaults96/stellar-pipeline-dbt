@@ -1,0 +1,226 @@
+id: 10
+title: "The Refresh Crisis"
+subtitle: "Bonus arc — incremental models for when full rebuilds get too slow."
+character: "NAV"
+xp_reward: 250
+
+badge:
+  id: incremental_engineer
+  emoji: "⚡"
+  name: "Incremental Engineer"
+  description: "Built an incremental model that only processes new and updated rows."
+  xp: 250
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,updated_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,2847-03-02T14:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,2847-03-03T08:00:00Z\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED,2847-03-02T18:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,2847-03-04T10:00:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,2847-03-04T22:00:00Z\nSHP-006,K7B,MRD-9,supplies,2100kg,2847-03-04T08:00:00Z,2847-03-05T06:00:00Z,DELIVERED,2847-03-05T06:00:00Z\nSHP-007,TAU-4,MRD-9,supplies,3100kg,2847-03-05T06:00:00Z,,IN_TRANSIT,2847-03-05T06:00:00Z\nSHP-008,K7B,ALF-C,medical,780kg,2847-03-05T08:00:00Z,,IN_TRANSIT,2847-03-05T08:00:00Z\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward + updated_at passthrough)
+
+    with source as (
+        select * from {{ source('helios', 'raw_shipments') }}
+    ),
+    renamed as (
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status,
+            cast(updated_at as timestamp) as updated_at
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+    {{ config(materialized='table') }}
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  models/marts/fct_shipment_log.sql: |
+    -- fct_shipment_log.sql
+    --
+    -- Build this as an INCREMENTAL model. Instead of rebuilding the whole
+    -- table from scratch on every run, it only processes rows that are new
+    -- or updated since the last run.
+    --
+    -- The shape of an incremental model:
+    --
+    --   {{ config(materialized='incremental', unique_key='key_column') }}
+    --
+    --   select * from {{ ref('...') }}
+    --
+    --   {% if is_incremental() %}
+    --     where update_column > (select max(update_column) from {{ this }})
+    --   {% endif %}
+    --
+    -- What each piece does:
+    --   * config(...): materialized='incremental' means dbt does NOT rebuild
+    --     this table from scratch. unique_key='shipment_id' tells dbt to
+    --     upsert (update if exists, insert if new).
+    --   * is_incremental() returns FALSE on the first run (full load) and
+    --     TRUE on every run after that.
+    --   * {{ this }} resolves to the model's own existing table.
+    --
+    -- The updated_at column in stg_shipments tracks when each row last changed.
+    -- Use it as the watermark in the WHERE clause.
+
+    select 1 as placeholder
+    -- Replace this with your incremental model
+
+  models/sources/helios_sources.yml: |
+    version: 2
+
+    sources:
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records with updated_at watermark"
+          - name: raw_planets
+            description: "Planetary registry: ports of call along Helios routes"
+
+objectives:
+  - id: set_materialization
+    label: "Set fct_shipment_log to materialized='incremental'"
+    hint: "Add a config block at the top of fct_shipment_log.sql. The syntax is: {{ config(materialized='incremental') }}"
+    check:
+      type: manifest_model_config
+      model: fct_shipment_log
+      key: materialized
+      value: incremental
+
+  - id: add_unique_key
+    label: "Set unique_key='shipment_id' in the config"
+    hint: "Inside the config block, add unique_key='shipment_id'. This tells dbt to upsert (update if exists, insert if new) based on shipment_id."
+    check:
+      type: manifest_model_config
+      model: fct_shipment_log
+      key: unique_key
+      value: shipment_id
+
+  - id: ref_shipments
+    label: "Use ref('stg_shipments') in the model"
+    hint: "Pull data from stg_shipments using ref(). Same pattern as the other marts."
+    check:
+      type: has_ref_call
+      filename: models/marts/fct_shipment_log.sql
+      target_model: stg_shipments
+
+  - id: add_is_incremental
+    label: "Add an is_incremental() filter for delta processing on updated_at using {{ this }}"
+    hint: "Add a WHERE clause that only runs on incremental loads. The pattern is: {% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}"
+    check:
+      type: manifest_model_depends_on_macro
+      model: fct_shipment_log
+      macro_name: is_incremental
+
+  - id: all_green
+    label: "Click 'dbt run' — the incremental model builds cleanly on the first load"
+    hint: "On the first run, is_incremental() is false and dbt loads everything. After this run, fct_shipment_log materializes as a regular table — but every subsequent run only inserts/updates rows newer than what's already there."
+    check:
+      type: all_models_pass
+
+narrative_triggers:
+  - id: nt_intro
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_start_guide
+    event: LEVEL_START
+    narrative_key: incremental_guide
+    once: true
+
+  - id: nt_first_run
+    event: FIRST_RUN
+    narrative_key: first_run
+    once: true
+
+  - id: nt_config_done
+    event: OBJECTIVE_set_materialization_COMPLETE
+    narrative_key: config_done
+    once: true
+
+  - id: nt_ref_done
+    event: OBJECTIVE_ref_shipments_COMPLETE
+    narrative_key: ref_done
+    once: true
+
+  - id: nt_incremental_done
+    event: OBJECTIVE_add_is_incremental_COMPLETE
+    narrative_key: incremental_explain
+    once: true
+
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: NAV
+    message: "Welcome to the bonus track. New problem: <highlight>Helios traffic is up 40%</highlight> since you shipped the pipeline last quarter. The full rebuild is taking long enough that the morning report is going out late. We need a model that only processes <highlight>new and updated rows</highlight>. That's what incremental models are for."
+    priority: high
+
+  incremental_guide:
+    id: incremental_guide
+    character: NAV
+    message: "Open <highlight>fct_shipment_log.sql</highlight>. The shape: a config block declaring it incremental and naming the unique_key, then a select from {{ ref('stg_shipments') }}, then a Jinja <highlight>{% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}</highlight> filter. First run loads everything. Every later run only picks up rows newer than what's already loaded. Start with the config block."
+    priority: normal
+
+  first_run:
+    id: first_run
+    character: NAV
+    message: "Existing models ran fine. Now you need fct_shipment_log built as an incremental model. First run loads everything. Every run after that picks up only rows where updated_at is newer than the last processed timestamp."
+    priority: normal
+
+  config_done:
+    id: config_done
+    character: NAV
+    message: "Config set. <highlight>materialized='incremental'</highlight> tells dbt to skip the rebuild-from-scratch step. <highlight>unique_key='shipment_id'</highlight> means a row with an existing ID gets updated, not duplicated. Now ref() the staging model and build the query."
+    priority: normal
+
+  ref_done:
+    id: ref_done
+    character: NAV
+    message: "Data source wired up. Now the key part: the <highlight>is_incremental()</highlight> filter. WHERE clause that only fires on incremental runs (skipped on the first full load). Pattern: use is_incremental() in a Jinja if block, filter updated_at greater than max(updated_at) in {{ this }}."
+    priority: normal
+
+  incremental_explain:
+    id: incremental_explain
+    character: NAV
+    message: "That's the pattern. <highlight>On first run, full load. On every run after that, just the delta.</highlight> This is how production warehouses handle large fact tables without rebuilding everything every refresh."
+    priority: normal
+
+  level_complete:
+    id: level_complete
+    character: NAV
+    message: "Refresh time dropped from 12 minutes to under 90 seconds. Holt's getting her morning report on time again. <highlight>That's incremental models.</highlight> One more bonus level: snapshots — for when you need to remember not just what the data is, but what it used to be."
+    priority: high

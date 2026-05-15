@@ -1,6 +1,36 @@
 'use client'
 import type { FileEntry, SourceEntry } from '@/hooks/useGameApi'
 
+// Natural reading order of a dbt project: root config → seeds → sources →
+// staging → marts → other models → macros → snapshots. Unknown folders fall
+// to the end alphabetically.
+const FOLDER_ORDER: string[] = [
+  '',
+  'seeds',
+  'models/sources',
+  'models/staging',
+  'models/marts',
+  'models',
+  'macros',
+  'snapshots',
+]
+
+function folderRank(folder: string): number {
+  const idx = FOLDER_ORDER.indexOf(folder)
+  return idx === -1 ? FOLDER_ORDER.length : idx
+}
+
+function folderLabel(folder: string): string {
+  return folder === '' ? '/' : `${folder}/`
+}
+
+function fileIcon(name: string): string {
+  if (name.endsWith('.sql')) return '⟨⟩'
+  if (name.endsWith('.csv')) return '⊞'
+  if (name.endsWith('.md')) return '¶'
+  return '☰'
+}
+
 export default function FileTree({ files, sources, activeFile, onSelect, onPreviewSource }: {
   files: FileEntry[]
   sources: SourceEntry[]
@@ -14,12 +44,18 @@ export default function FileTree({ files, sources, activeFile, onSelect, onPrevi
     if (!groups[folder]) groups[folder] = []
     groups[folder].push(f)
   }
+  const ordered = Object.entries(groups).sort(([a], [b]) => {
+    const ra = folderRank(a), rb = folderRank(b)
+    if (ra !== rb) return ra - rb
+    return a.localeCompare(b)
+  })
+
   return (
     <div className="p-2">
-      <div className="font-orbitron text-xs text-stellar-text-dim mb-2 px-2 tracking-wider">FILES</div>
-      {Object.entries(groups).map(([folder, entries]) => (
-        <div key={folder} className="mb-1">
-          <div className="font-mono-tech text-xs text-stellar-text-dim px-2 py-1">{folder}/</div>
+      <div className="font-orbitron text-xs text-stellar-text-dim mb-2 px-2 tracking-wider">PROJECT</div>
+      {ordered.map(([folder, entries]) => (
+        <div key={folder || 'root'} className="mb-1">
+          <div className="font-mono-tech text-xs text-stellar-text-dim px-2 py-1">{folderLabel(folder)}</div>
           {entries.map(f => {
             const name = f.path.split('/').pop()!
             const active = f.path === activeFile
@@ -29,7 +65,7 @@ export default function FileTree({ files, sources, activeFile, onSelect, onPrevi
                   ${active
                     ? 'bg-accent-dim text-stellar-text-bright border-l-2 border-accent'
                     : 'text-stellar-text hover:bg-deep border-l-2 border-transparent'}`}>
-                <span className="text-stellar-text-dim text-xs">{name.endsWith('.sql') ? '⟨⟩' : '☰'}</span>
+                <span className="text-stellar-text-dim text-xs">{fileIcon(name)}</span>
                 <span className="truncate flex-1">{name}</span>
                 {f.locked && <span className="text-stellar-text-dim text-xs">🔒</span>}
               </button>

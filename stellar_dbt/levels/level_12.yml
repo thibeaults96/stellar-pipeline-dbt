@@ -1,0 +1,271 @@
+id: 12
+title: "The Priority Pipeline"
+subtitle: "Bonus arc — Jinja macros and the reusable SQL pattern."
+character: "NAV"
+xp_reward: 300
+
+badge:
+  id: toolsmith
+  emoji: "\U0001f9f0"
+  name: "Toolsmith"
+  description: "Wrote a Jinja macro and called it from a model — reusable SQL, one source of truth."
+  xp: 300
+
+locked_files:
+  - models/staging/stg_planets.sql
+  - models/staging/stg_shipments.sql
+  - models/marts/fct_trade_routes.sql
+
+seed_files:
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED\nSHP-006,K7B,MRD-9,supplies,2100kg,2847-03-04T08:00:00Z,2847-03-05T06:00:00Z,DELIVERED\n"
+
+initial_files:
+  models/staging/stg_shipments.sql: |
+    -- stg_shipments.sql (carried forward)
+
+    with source as (
+        select * from {{ source('helios', 'raw_shipments') }}
+    ),
+    renamed as (
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
+            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
+            cast(departed_at as timestamp) as departed_at,
+            cast(arrived_at as timestamp) as arrived_at,
+            lower(status) as status
+        from source
+    )
+    select * from renamed
+
+  models/marts/fct_trade_routes.sql: |
+    -- fct_trade_routes.sql (carried forward)
+    {{ config(materialized='table') }}
+
+    with shipments as (
+        select * from {{ ref('stg_shipments') }}
+    ), planets as (
+        select * from {{ ref('stg_planets') }}
+    ), routes as (
+        select
+            s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
+            s.departed_at, s.arrived_at,
+            origin.planet_name as origin_planet_name,
+            dest.planet_name as destination_planet_name
+        from shipments s
+        left join planets origin on s.origin_planet_id = origin.planet_id
+        left join planets dest on s.destination_planet_id = dest.planet_id
+    )
+    select * from routes
+
+  models/sources/helios_sources.yml: |
+    version: 2
+
+    sources:
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
+        schema: main
+        tables:
+          - name: raw_shipments
+            description: "Cargo shipment records"
+          - name: raw_planets
+            description: "Planetary registry: ports of call along Helios routes"
+
+  macros/cargo_priority.sql: |
+    -- cargo_priority.sql
+    --
+    -- This is a MACRO file. Macros are reusable Jinja functions you can call
+    -- from any model. They live in the macros/ folder and dbt picks them up
+    -- automatically.
+    --
+    -- Your job: write a macro called `cargo_priority` that takes a column
+    -- name and returns a CASE WHEN expression categorizing the cargo:
+    --
+    --   medical                            → 'critical'
+    --   fuel_cells, humanitarian_aid       → 'high'
+    --   anything else                      → 'standard'
+    --
+    -- Macro syntax:
+    --
+    --   {% macro example_macro(column_name) %}
+    --       case
+    --           when {{ column_name }} = 'foo' then 'bar'
+    --           else 'baz'
+    --       end
+    --   {% endmacro %}
+    --
+    -- Notes on the delimiters:
+    --   {% ... %} wraps Jinja control statements (macro, endmacro, if, for).
+    --   {{ ... }} substitutes a value into the rendered SQL — here, the
+    --   parameter `column_name` becomes the column reference inside the CASE.
+    --
+    -- Calling it from a model looks like:
+    --
+    --   {{ cargo_priority('cargo_type') }} as priority
+    --
+    -- Replace this comment block with your macro definition.
+
+  models/marts/fct_priority_routes.sql: |
+    -- fct_priority_routes.sql
+    --
+    -- Build a derived mart that uses your cargo_priority macro to add a
+    -- priority column. Steps:
+    --
+    --   1. Pull from fct_trade_routes using ref()
+    --   2. Project all the existing columns through
+    --   3. Add a new `priority` column by calling {{ cargo_priority('cargo_type') }}
+    --
+    -- The whole point of the macro: if the priority rules change later, you
+    -- edit one .sql file in macros/ instead of every model that uses them.
+
+    select 1 as placeholder
+    -- Replace this with your query
+
+objectives:
+  # ── Phase 1: Define the macro ──
+  - id: define_macro
+    label: "Define a `cargo_priority` macro in macros/cargo_priority.sql"
+    hint: "Replace the comment block with: `{% macro cargo_priority(column_name) %}` then a CASE WHEN that returns 'critical' for medical, 'high' for fuel_cells or humanitarian_aid, 'standard' otherwise, then `{% endmacro %}`. Reference the parameter inside the CASE with `{{ column_name }}`."
+    # The manifest only registers a macro if dbt parses it cleanly — malformed
+    # Jinja or a missing {% endmacro %} leaves it out. Reading the manifest is
+    # the strictest check available.
+    check:
+      type: manifest_macro_defined
+      macro_name: cargo_priority
+
+  # ── Phase 2: Build the mart that calls the macro ──
+  - id: ref_trade_routes
+    label: "Pull data from fct_trade_routes using ref() in fct_priority_routes"
+    hint: "Same pattern as every other mart: `select * from {{ ref('fct_trade_routes') }}`. The macro builds on this — it adds a priority column derived from cargo_type."
+    check:
+      type: has_ref_call
+      filename: models/marts/fct_priority_routes.sql
+      target_model: fct_trade_routes
+
+  - id: call_macro
+    label: "Call the cargo_priority macro to produce a `priority` column"
+    hint: "In the SELECT, add: `{{ cargo_priority('cargo_type') }} as priority`. dbt expands the macro at compile time — the CASE WHEN you wrote gets inlined wherever you call it. If the rules change later, you change them once."
+    # depends_on.macros only registers a call if dbt actually rendered it.
+    # A bare 'cargo_priority(...)' in a comment or string literal won't pass.
+    check:
+      type: manifest_model_depends_on_macro
+      model: fct_priority_routes
+      macro_name: cargo_priority
+
+  - id: verify_priority_values
+    label: "The priority column should contain 'critical', 'high', and 'standard' values"
+    hint: "Once the model is built, the priority column gets populated based on the cargo types in fct_trade_routes. The seed has medical (critical), fuel_cells + humanitarian_aid (high), and supplies + equipment (standard). All three buckets should appear."
+    check:
+      type: duckdb_column_values
+      table: fct_priority_routes
+      query: "SELECT 1 FROM main.fct_priority_routes WHERE priority NOT IN ('critical', 'high', 'standard')"
+
+  # ── Phase 3: Run it ──
+  - id: all_green
+    label: "Run dbt — all models pass"
+    hint: "Click 'dbt run' to build fct_priority_routes alongside the existing marts. If the macro doesn't compile, dbt will tell you exactly which Jinja line is wrong."
+    check:
+      type: all_models_pass
+
+narrative_triggers:
+  - id: nt_intro
+    event: LEVEL_START
+    narrative_key: intro
+    once: true
+
+  - id: nt_setup
+    event: LEVEL_START
+    narrative_key: matsuri_briefing
+    once: true
+
+  - id: nt_macro_guide
+    event: LEVEL_START
+    narrative_key: macro_guide
+    once: true
+
+  - id: nt_first_run
+    event: FIRST_RUN
+    narrative_key: first_run_note
+    once: true
+
+  - id: nt_macro_done
+    event: OBJECTIVE_define_macro_COMPLETE
+    narrative_key: macro_defined
+    once: true
+
+  - id: nt_ref_done
+    event: OBJECTIVE_ref_trade_routes_COMPLETE
+    narrative_key: call_guide
+    once: true
+
+  - id: nt_call_done
+    event: OBJECTIVE_call_macro_COMPLETE
+    narrative_key: reuse_payoff
+    once: true
+
+  - id: nt_complete
+    event: LEVEL_COMPLETE
+    narrative_key: level_complete
+    once: true
+
+  - id: nt_finale
+    event: LEVEL_COMPLETE
+    narrative_key: finale
+    once: true
+
+narrative_script:
+  intro:
+    id: intro
+    character: NAV
+    message: "Last bonus level. Quick story: Holt wants the priority rules — which cargo gets routed through Helios first when capacity is tight — visible in the analyst tables. Easy enough to add a CASE WHEN to fct_trade_routes. But the same rules will show up in three other marts by end of quarter, and now you've got the same SQL copy-pasted in four files. This level is about <highlight>macros</highlight> — reusable Jinja functions that let you write the logic once and call it everywhere."
+    priority: high
+
+  matsuri_briefing:
+    id: matsuri_briefing
+    character: DR. MATSURI
+    message: "Quick on the priority rules so you can encode them: <highlight>medical cargo is critical</highlight> — life support, drugs, anything that times out. <highlight>Fuel cells and humanitarian aid are high</highlight> — large operational impact if delayed. <highlight>Everything else is standard</highlight>. The rules will probably get more nuanced over the next year — that's the case for centralizing them in one place now."
+    priority: normal
+
+  macro_guide:
+    id: macro_guide
+    character: NAV
+    message: "Open <highlight>macros/cargo_priority.sql</highlight>. Macro syntax: <highlight>{% macro name(arg) %}</highlight> ... SQL with `{{ arg }}` placeholders ... <highlight>{% endmacro %}</highlight>. The `{% %}` delimiters wrap control statements; the `{{ }}` ones substitute values. When you call the macro from a model with `{{ cargo_priority('cargo_type') }}`, dbt renders the body with `column_name` replaced by `cargo_type` at compile time. The model sees ordinary SQL by the time it hits the warehouse."
+    priority: normal
+
+  first_run_note:
+    id: first_run_note
+    character: NAV
+    message: "Models built. Open the data preview for <highlight>fct_trade_routes</highlight> — that's what your new mart will read from. cargo_type is the column the macro inspects. The macro doesn't actually transform the data; it builds a CASE WHEN expression dbt inlines wherever you call it."
+    priority: normal
+
+  macro_defined:
+    id: macro_defined
+    character: NAV
+    message: "Macro registered with dbt. <highlight>Important detail</highlight>: the macro is just a Jinja function — it doesn't run anything on its own, and it doesn't appear as a model in the DAG. It only does work when a model calls it. Next step: build fct_priority_routes and have it use the macro."
+    priority: normal
+
+  call_guide:
+    id: call_guide
+    character: NAV
+    message: "ref() is wired. Now call the macro: <highlight>{{ cargo_priority('cargo_type') }} as priority</highlight>. The single-quoted `cargo_type` is the column name dbt will substitute into the macro body — it's a string, not a SQL identifier, until the macro renders it inside the CASE."
+    priority: normal
+
+  reuse_payoff:
+    id: reuse_payoff
+    character: NAV
+    message: "Macro is wired up. Here's the payoff: <highlight>if Holt comes back tomorrow and says \"actually, fuel_cells should be critical too\"</highlight>, you edit one file in macros/ and every model that calls cargo_priority gets the new rule automatically. <highlight>That's the DRY principle</highlight> — Don't Repeat Yourself. Macros are how dbt projects scale to hundreds of models without the maintenance load growing linearly."
+    priority: high
+
+  level_complete:
+    id: level_complete
+    character: NAV
+    message: "Priority pipeline is live, fed by a macro that other marts can reuse. <highlight>That's macros.</highlight>"
+    priority: high
+
+  finale:
+    id: finale
+    character: NAV
+    message: "Three bonus levels down. One left: <highlight>packages</highlight> — installing external dbt code (dbt_utils most commonly) and parameterizing your project with vars. The most-used pattern in real production projects after the Fundamentals themselves."
+    priority: normal

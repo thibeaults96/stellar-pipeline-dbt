@@ -27,9 +27,12 @@ export default function GameShell() {
   const [objectives, setObjectives] = useState<Objective[]>([])
   const [newlyCompleted, setNewlyCompleted] = useState<string[]>([])
   const [levelComplete, setLevelComplete] = useState<{ badge: { emoji: string; name: string }; xp: number } | null>(null)
+  // Hold the level-complete payload here while end-of-level transmissions are
+  // still in the toast queue, so the modal doesn't pop over the closing comms.
+  const [pendingLevelComplete, setPendingLevelComplete] = useState<{ badge: { emoji: string; name: string }; xp: number } | null>(null)
   const [dagKey, setDagKey] = useState(0)
   const [previewModel, setPreviewModel] = useState('stg_shipments')
-  const [bottomTab, setBottomTab] = useState<'dag' | 'preview' | 'terminal'>('dag')
+  const [bottomTab, setBottomTab] = useState<import('./BottomPane').Tab>('dag')
   const [toasts, setToasts] = useState<ToastEntry[]>([])
   const toastKeyRef = useRef(0)
 
@@ -58,6 +61,13 @@ export default function GameShell() {
     setFileContent('')
     setFileLocked(false)
     setLevelComplete(null)
+    setPendingLevelComplete(null)
+    // Deploy / Environment / Schedule levels surface their dedicated tab on
+    // entry so the player doesn't have to discover the UI affordance.
+    if (levelId === 7) setBottomTab('deploy')
+    else if (levelId === 8) setBottomTab('environment')
+    else if (levelId === 9) setBottomTab('schedule')
+    else setBottomTab('dag')
     // Clear any leftover toasts before queuing this level's intro narratives.
     setToasts([])
     pushToasts(report.narratives)
@@ -125,11 +135,30 @@ export default function GameShell() {
       setNarratives(prev => [...prev, ...report.narratives])
       pushToasts(report.narratives)
     }
-    if (report.levelComplete && report.badge) setLevelComplete({ badge: report.badge, xp: report.xpEarned })
+    if (report.levelComplete && report.badge) {
+      const payload = { badge: report.badge, xp: report.xpEarned }
+      // If there are end-of-level transmissions to play, park the modal
+      // payload and let the toast-queue effect promote it once the player
+      // has clicked through the comms. Otherwise show it immediately.
+      if (report.narratives.length > 0) {
+        setPendingLevelComplete(payload)
+      } else {
+        setLevelComplete(payload)
+      }
+    }
     setDagKey(k => k + 1)
     const s = await api.getStatus()
     setStatus(s)
   }, [pushToasts])
+
+  // Promote the parked level-complete payload to the visible modal once the
+  // end-of-level toast queue has drained.
+  useEffect(() => {
+    if (pendingLevelComplete && toasts.length === 0) {
+      setLevelComplete(pendingLevelComplete)
+      setPendingLevelComplete(null)
+    }
+  }, [pendingLevelComplete, toasts.length])
 
   const handleRun = useCallback(async () => {
     setIsRunning(true)
@@ -185,6 +214,26 @@ export default function GameShell() {
     } finally { setIsRunning(false) }
   }, [handleReport])
 
+  const handleSeed = useCallback(async () => {
+    setIsRunning(true)
+    setBottomTab('terminal')
+    try {
+      const r = await api.seed()
+      setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
+      await handleReport(r)
+    } finally { setIsRunning(false) }
+  }, [handleReport])
+
+  const handleDeps = useCallback(async () => {
+    setIsRunning(true)
+    setBottomTab('terminal')
+    try {
+      const r = await api.deps()
+      setTermOutput(r.dbtOutput); setTermSuccess(r.dbtSuccess)
+      await handleReport(r)
+    } finally { setIsRunning(false) }
+  }, [handleReport])
+
   const handleReset = useCallback(async () => {
     setLevelComplete(null)
     const currentLevel = status?.level?.id ?? 1
@@ -213,13 +262,21 @@ export default function GameShell() {
     )
   }
 
-  const language = activeFile.endsWith('.yml') || activeFile.endsWith('.yaml') ? 'yaml' : 'sql'
+  const language = activeFile.endsWith('.yml') || activeFile.endsWith('.yaml')
+    ? 'yaml'
+    : activeFile.endsWith('.md')
+      ? 'markdown'
+      : activeFile.endsWith('.csv')
+        ? 'plaintext'
+        : 'sql'
 
   return (
     <div className="h-screen w-screen flex flex-col bg-void overflow-hidden">
       <StatusBar
         status={status}
         isRunning={isRunning}
+        onSeed={handleSeed}
+        onDeps={handleDeps}
         onRun={handleRun}
         onTest={handleTest}
         onBuild={handleBuild}
@@ -273,7 +330,7 @@ export default function GameShell() {
               Select a file to edit
             </div>
           )}
-          <div className="h-[260px] border-t border-panel-border">
+          <div className="h-[280px] border-t border-panel-border">
             <BottomPane
               dagKey={dagKey}
               previewModel={previewModel}
@@ -282,6 +339,8 @@ export default function GameShell() {
               termSuccess={termSuccess}
               activeTab={bottomTab}
               onTabChange={setBottomTab}
+              currentLevel={status?.level?.id ?? 1}
+              onReport={handleReport}
             />
           </div>
         </div>
@@ -299,18 +358,34 @@ export default function GameShell() {
 
       <NarrativeToast toasts={toasts} onDismiss={dismissToast} />
 
-      {levelComplete && (
-        <LevelComplete
-          badge={levelComplete.badge}
-          xpEarned={levelComplete.xp}
-          onDismiss={() => setLevelComplete(null)}
-          onNextMission={
-            status && status.level.id < 6
-              ? () => { setLevelComplete(null); loadLevel(status.level.id + 1) }
-              : undefined
-          }
-        />
-      )}
+      {levelComplete && status && (() => {
+        const id = status.level.id
+        const TOTAL_LEVELS = 13
+        // Per-level modal config:
+        //  • L9 ends the core arc — offer dbt docs AND the first bonus level.
+        //  • L12 is the final level — offer dbt docs only, no Next.
+        //  • Everything else — the normal Next Mission button to the next level.
+        const isCoreFinale = id === 9
+        const isFinal = id === TOTAL_LEVELS
+        const onNext = (!isFinal && id < TOTAL_LEVELS)
+          ? () => { setLevelComplete(null); loadLevel(id + 1) }
+          : undefined
+        const nextLabel = isCoreFinale ? 'Start bonus arc ▶' : undefined
+        return (
+          <LevelComplete
+            badge={levelComplete.badge}
+            xpEarned={levelComplete.xp}
+            onDismiss={() => setLevelComplete(null)}
+            onNext={onNext}
+            nextLabel={nextLabel}
+            showDocsLink={isCoreFinale || isFinal}
+            title={isFinal ? 'TRAINING COMPLETE' : undefined}
+            outroMessage={isFinal
+              ? "You've cleared the training arc. Take what you've built and apply it to a real project."
+              : undefined}
+          />
+        )
+      })()}
     </div>
   )
 }

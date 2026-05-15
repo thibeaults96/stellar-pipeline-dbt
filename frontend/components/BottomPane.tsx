@@ -5,8 +5,11 @@ import { api } from '@/hooks/useGameApi'
 import DagView from './DagView'
 import ResultsPreview from './ResultsPreview'
 import TerminalPanel from './TerminalPanel'
+import DeployPanel from './DeployPanel'
+import EnvironmentPanel from './EnvironmentPanel'
+import SchedulePanel from './SchedulePanel'
 
-type Tab = 'dag' | 'preview' | 'terminal'
+export type Tab = 'dag' | 'preview' | 'terminal' | 'deploy' | 'environment' | 'schedule'
 
 export default function BottomPane({
   dagKey,
@@ -16,6 +19,8 @@ export default function BottomPane({
   termSuccess,
   activeTab,
   onTabChange,
+  currentLevel,
+  onReport,
 }: {
   dagKey: number
   previewModel: string
@@ -24,6 +29,8 @@ export default function BottomPane({
   termSuccess: boolean | null
   activeTab: Tab
   onTabChange: (tab: Tab) => void
+  currentLevel: number
+  onReport: (r: import('@/hooks/useGameApi').ActionReport) => void
 }) {
   const [modelNames, setModelNames] = useState<string[]>([])
 
@@ -49,6 +56,10 @@ export default function BottomPane({
         : 'text-stellar-text-dim hover:text-stellar-text'
     }`
 
+  const showDeploy = currentLevel === 7
+  const showEnvironment = currentLevel === 8
+  const showSchedule = currentLevel === 9
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center bg-deep border-b border-panel-border flex-shrink-0">
@@ -60,6 +71,15 @@ export default function BottomPane({
             <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-stellar-red" />
           )}
         </button>
+        {showDeploy && (
+          <button onClick={() => onTabChange('deploy')} className={tabClass('deploy')}>DEPLOY</button>
+        )}
+        {showEnvironment && (
+          <button onClick={() => onTabChange('environment')} className={tabClass('environment')}>ENVIRONMENT</button>
+        )}
+        {showSchedule && (
+          <button onClick={() => onTabChange('schedule')} className={tabClass('schedule')}>SCHEDULE</button>
+        )}
         {activeTab === 'preview' && modelNames.length > 0 && (
           <div className="flex items-center ml-2 gap-1">
             {modelNames.map(name => (
@@ -78,11 +98,20 @@ export default function BottomPane({
           </div>
         )}
       </div>
-      <div className="flex-1 min-h-0 bg-void">
+      <div className="flex-1 min-h-0 bg-void overflow-auto">
         {activeTab === 'dag' && <DagView key={dagKey} />}
         {activeTab === 'preview' && <ResultsPreview key={previewModel + dagKey} modelName={previewModel} />}
         {activeTab === 'terminal' && (
           <TerminalPanel output={termOutput} success={termSuccess} />
+        )}
+        {activeTab === 'deploy' && showDeploy && (
+          <DeployPanel onReport={onReport} />
+        )}
+        {activeTab === 'environment' && showEnvironment && (
+          <EnvironmentPanel onReport={onReport} />
+        )}
+        {activeTab === 'schedule' && showSchedule && (
+          <SchedulePanel onReport={onReport} />
         )}
       </div>
     </div>

@@ -2,19 +2,28 @@
 import type { GameStatus } from '@/hooks/useGameApi'
 
 const LEVELS = [
-  { id: 1, name: 'First Day' },
-  { id: 2, name: 'Kepler-7b' },
-  { id: 3, name: "Smuggler's Ledger" },
-  { id: 4, name: 'Refresh Crisis' },
-  { id: 5, name: 'Time Ledger' },
-  { id: 6, name: 'Clean Handoff' },
+  { id: 1, name: 'Welcome to Helios' },
+  { id: 2, name: 'Boot the Pipeline' },
+  { id: 3, name: 'First Models' },
+  { id: 4, name: 'The Source of Truth' },
+  { id: 5, name: 'Trust but Verify' },
+  { id: 6, name: 'Tell the Story' },
+  { id: 7, name: 'Ship It' },
+  { id: 8, name: 'Set Up Production' },
+  { id: 9, name: 'Schedule the Refresh' },
+  { id: 10, name: 'Refresh Crisis' },
+  { id: 11, name: 'Time Ledger' },
+  { id: 12, name: 'Priority Pipeline' },
+  { id: 13, name: 'Package Deal' },
 ]
 
 export default function StatusBar({
-  status, isRunning, onRun, onTest, onBuild, onSnapshot, onFreshness, onReset, onSelectLevel,
+  status, isRunning, onSeed, onDeps, onRun, onTest, onBuild, onSnapshot, onFreshness, onReset, onSelectLevel,
 }: {
   status: GameStatus | null
   isRunning: boolean
+  onSeed: () => void
+  onDeps: () => void
   onRun: () => void
   onTest: () => void
   onBuild: () => void
@@ -105,6 +114,18 @@ export default function StatusBar({
         ↺
       </button>
       <div className="flex items-center gap-1">
+        <button onClick={onSeed} disabled={isRunning}
+          className="px-2.5 py-1.5 font-mono-tech text-xs border border-panel-border rounded text-stellar-text hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+          title="dbt seed — load CSVs from seeds/ into the warehouse">
+          dbt seed
+        </button>
+        {status.level.id === 13 && (
+          <button onClick={onDeps} disabled={isRunning}
+            className="px-2.5 py-1.5 font-mono-tech text-xs border border-panel-border rounded text-stellar-text hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+            title="dbt deps — install packages declared in packages.yml">
+            dbt deps
+          </button>
+        )}
         <button onClick={onRun} disabled={isRunning}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-dim border border-accent text-accent font-orbitron text-xs rounded hover:bg-accent hover:text-void transition-colors disabled:opacity-50">
           {isRunning ? <span className="animate-spin">⟳</span> : <span>▶</span>}

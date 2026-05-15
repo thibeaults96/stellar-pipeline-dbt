@@ -1,15 +1,15 @@
 id: 4
-title: "The Refresh Crisis"
-subtitle: "Build an incremental model. Process only what's new."
-character: "R0-B3RT"
-xp_reward: 220
+title: "The Source of Truth"
+subtitle: "Lock down where the raw data comes from — and how stale it can get."
+character: "NAV"
+xp_reward: 200
 
 badge:
-  id: incremental_engineer
-  emoji: "\u26a1"
-  name: "Incremental Engineer"
-  description: "Built an incremental model that only processes new data instead of rebuilding everything."
-  xp: 220
+  id: source_keeper
+  emoji: "\U0001f9ed"
+  name: "Source Keeper"
+  description: "Configured source freshness so dbt flags stale raw data automatically."
+  xp: 200
 
 locked_files:
   - models/staging/stg_planets.sql
@@ -17,169 +17,169 @@ locked_files:
   - models/marts/fct_trade_routes.sql
 
 seed_files:
-  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,updated_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T14:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0,2847-03-03T08:00:00Z\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-03-04T00:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0,2847-03-04T10:00:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0,2847-03-04T22:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-05T00:00:00Z\nSHP-007,TAU-4,MRD-9,supplies,3100kg,2847-03-05T06:00:00Z,,IN_TRANSIT,0,2847-03-05T06:00:00Z\nSHP-008,K7B,ALF-C,medical,780kg,2847-03-05T08:00:00Z,,IN_TRANSIT,0,2847-03-05T08:00:00Z\n"
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,loaded_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,2847-03-02T06:00:00Z\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,2847-03-03T07:00:00Z\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED,2847-03-02T19:00:00Z\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,2847-03-04T10:30:00Z\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,2847-03-04T22:30:00Z\nSHP-006,K7B,MRD-9,supplies,2100kg,2847-03-04T08:00:00Z,2847-03-05T06:00:00Z,DELIVERED,2847-03-05T06:30:00Z\n"
 
 initial_files:
   models/staging/stg_shipments.sql: |
-    -- stg_shipments.sql (carried forward)
+    -- stg_shipments.sql (carried forward from First Models)
 
     with source as (
-        select * from {{ source('federation', 'raw_shipments') }}
+
+        select * from {{ source('helios', 'raw_shipments') }}
+
     ),
+
     renamed as (
-        select shipment_id, origin_planet as origin_planet_id,
-            dest_planet as destination_planet_id, cargo_type,
+
+        select
+            shipment_id,
+            origin_planet as origin_planet_id,
+            dest_planet as destination_planet_id,
+            cargo_type,
             cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
             cast(departed_at as timestamp) as departed_at,
             cast(arrived_at as timestamp) as arrived_at,
-            lower(status) as status, voss_flag, updated_at
+            lower(status) as status
+
         from source
+
     )
+
     select * from renamed
 
   models/marts/fct_trade_routes.sql: |
-    -- fct_trade_routes.sql (carried forward)
+    -- fct_trade_routes.sql (carried forward from First Models)
+    {{ config(materialized='table') }}
 
     with shipments as (
+
         select * from {{ ref('stg_shipments') }}
-    ), planets as (
+
+    ),
+
+    planets as (
+
         select * from {{ ref('stg_planets') }}
-    ), routes as (
-        select s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
-            s.departed_at, s.arrived_at,
+
+    ),
+
+    routes as (
+
+        select
+            s.shipment_id,
+            s.cargo_type,
+            s.cargo_mass_kg,
+            s.status,
+            s.departed_at,
+            s.arrived_at,
             origin.planet_name as origin_planet_name,
-            dest.planet_name as destination_planet_name
+            dest.planet_name as destination_planet_name,
+            origin.sector as origin_sector
+
         from shipments s
         left join planets origin on s.origin_planet_id = origin.planet_id
         left join planets dest on s.destination_planet_id = dest.planet_id
+
     )
+
     select * from routes
 
-  models/marts/fct_shipment_log.sql: |
-    -- fct_shipment_log.sql
-    --
-    -- This model should be INCREMENTAL. Instead of rebuilding all data every
-    -- run, it should only process rows that are new or updated since the
-    -- last run.
-    --
-    -- The shape of an incremental model in dbt:
-    --
-    --   {{ config(materialized='incremental', unique_key='key_column') }}
-    --
-    --   select * from {{ ref('...') }}
-    --
-    --   {% if is_incremental() %}
-    --     where update_column > (select max(update_column) from {{ this }})
-    --   {% endif %}
-    --
-    -- What each piece does:
-    --   * config(...): materialized='incremental' means dbt does NOT rebuild
-    --     this table from scratch. unique_key='shipment_id' tells dbt to
-    --     upsert (update if exists, insert if new) by shipment_id.
-    --   * is_incremental() returns FALSE on the first run (full load) and
-    --     TRUE on every run after that.
-    --   * {{ this }} resolves to the model's own existing table — letting
-    --     you say "give me rows newer than what's already loaded".
-    --
-    -- The updated_at column in stg_shipments tracks when each row last changed.
-    -- Use it as the watermark in the WHERE clause.
+  models/sources/helios_sources.yml: |
+    # helios_sources.yml
+    #
+    # raw_shipments now has a `loaded_at` column — the dock crew stamps it
+    # whenever a row hits the receiver. That gives us something to compare
+    # against for freshness checks.
+    #
+    # Your job: add a `freshness:` block to raw_shipments so dbt knows when
+    # the data is stale. The shape is:
+    #
+    #   - name: raw_shipments
+    #     loaded_at_field: loaded_at
+    #     freshness:
+    #       warn_after: {count: 24, period: hour}
+    #       error_after: {count: 48, period: hour}
+    #
+    # Then click `dbt freshness` in the toolbar to actually run the check.
 
-    select 1 as placeholder
-    -- Replace this with your incremental model
-
-  models/sources/federation_sources.yml: |
     version: 2
 
     sources:
-      - name: federation
-        description: "Raw telemetry data from Federation sensor arrays"
+      - name: helios
+        description: "Raw cargo telemetry from Helios Waystation receivers"
         schema: main
         tables:
           - name: raw_shipments
-            description: "Cargo shipment records from all registered vessels"
+            description: "Cargo shipment records from inbound and outbound vessels"
+            # TODO: add loaded_at_field and a freshness: block here.
+
           - name: raw_planets
-            description: "Planetary registry and resource data"
+            description: "Planetary registry: ports of call along Helios routes"
 
 objectives:
-  - id: set_materialization
-    label: "Set fct_shipment_log to materialized='incremental'"
-    hint: "Add a config block at the top of fct_shipment_log.sql. The syntax is: {{ config(materialized='incremental') }}"
-    # Read the resolved materialization from manifest.json. dbt computes the
-    # effective config from the file plus dbt_project.yml, so this passes
-    # only when the model truly is incremental — not just when the text
-    # appears somewhere in the file.
+  - id: initial_run
+    label: "Click 'dbt run' first — confirms the pipeline still builds with new raw data"
+    hint: "The carried-forward staging and mart models still work since they only project the columns they care about. Run dbt to lay down stg_shipments and fct_trade_routes — the freshness check needs a working warehouse to point at."
+    # model_passes on the leaf confirms the full chain compiled, without
+    # gating on every other objective the way all_models_pass does.
     check:
-      type: manifest_model_config
-      model: fct_shipment_log
-      key: materialized
-      value: incremental
+      type: model_passes
+      model: fct_trade_routes
 
-  - id: add_unique_key
-    label: "Set unique_key='shipment_id' in the config"
-    hint: "Inside the config block, add unique_key='shipment_id'. This tells dbt to upsert (update if exists, insert if new) based on shipment_id."
+  - id: configure_freshness
+    label: "Add a freshness block to raw_shipments (loaded_at_field + warn_after + error_after)"
+    hint: "Inside the raw_shipments entry, add `loaded_at_field: loaded_at`, then a `freshness:` block with `warn_after: {count: 24, period: hour}` and `error_after: {count: 48, period: hour}`. dbt walks the YAML structurally — every key has to be in the right place."
     check:
-      type: manifest_model_config
-      model: fct_shipment_log
-      key: unique_key
-      value: shipment_id
+      type: has_freshness_config
+      source_name: helios
+      table_name: raw_shipments
 
-  - id: ref_shipments
-    label: "Use ref('stg_shipments') in the model"
-    hint: "Pull data from stg_shipments using ref(). Same pattern as before."
+  - id: run_freshness
+    label: "Click 'dbt freshness' — run the actual freshness check against the live data"
+    hint: "dbt source freshness runs a real SQL query: `select max(loaded_at) from raw_shipments`, then compares the age of the newest row to your warn/error thresholds. If the YAML is malformed it errors out and tells you exactly what's wrong. If it runs (pass / warn / error all count), the config is structurally valid."
     check:
-      type: has_ref_call
-      filename: models/marts/fct_shipment_log.sql
-      target_model: stg_shipments
-
-  - id: add_is_incremental
-    label: "Add an is_incremental() filter for delta processing on updated_at using {{this}}"
-    hint: "Add a WHERE clause that only runs on incremental loads. The pattern is: {% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}"
-    # depends_on.macros only includes is_incremental when the Jinja was
-    # actually evaluated by dbt's parser — a stray reference in a comment or
-    # docstring won't show up here, unlike a regex match.
-    check:
-      type: manifest_model_depends_on_macro
-      model: fct_shipment_log
-      macro_name: is_incremental
+      type: source_freshness_ran
+      source_name: helios
+      table_name: raw_shipments
 
   - id: all_green
-    label: "Run dbt and all models pass"
-    hint: "Click 'dbt run' to build all models including the new incremental one."
+    label: "Click 'dbt run' once more — everything still builds with the new source config"
+    hint: "Source config is metadata to dbt — it doesn't change how models compile, just adds the freshness contract. Confirm the pipeline still runs clean."
     check:
       type: all_models_pass
 
 narrative_triggers:
-  - id: nt_start
+  - id: nt_intro
     event: LEVEL_START
     narrative_key: intro
     once: true
 
   - id: nt_start_guide
     event: LEVEL_START
-    narrative_key: incremental_guide
+    narrative_key: freshness_guide
     once: true
 
   - id: nt_first_run
-    event: FIRST_RUN
-    narrative_key: first_run
+    event: OBJECTIVE_initial_run_COMPLETE
+    narrative_key: lineage_hint
     once: true
 
-  - id: nt_config_done
-    event: OBJECTIVE_set_materialization_COMPLETE
-    narrative_key: config_done
+  - id: nt_freshness_done
+    event: OBJECTIVE_configure_freshness_COMPLETE
+    narrative_key: freshness_done
     once: true
 
-  - id: nt_ref_done
-    event: OBJECTIVE_ref_shipments_COMPLETE
-    narrative_key: ref_done
+  - id: nt_freshness_ran
+    event: OBJECTIVE_run_freshness_COMPLETE
+    narrative_key: freshness_ran
     once: true
 
-  - id: nt_incremental_done
-    event: OBJECTIVE_add_is_incremental_COMPLETE
-    narrative_key: incremental_explain
+  - id: nt_freshness_fail
+    event: FRESHNESS_FAILURE
+    narrative_key: freshness_failure
     once: true
 
-  - id: nt_complete
+  - id: nt_level_complete
     event: LEVEL_COMPLETE
     narrative_key: level_complete
     once: true
@@ -187,42 +187,42 @@ narrative_triggers:
 narrative_script:
   intro:
     id: intro
-    character: R0-B3RT
-    message: "We've got a problem. Shipment volume is up 40% and the full pipeline rebuild is taking too long. Every time we run dbt, it rebuilds everything from scratch. We need a model that only processes <highlight>new and updated records</highlight>. That's what incremental models are for."
+    character: NAV
+    message: "Quick story: last quarter the receiver array at dock 3 went offline for 14 hours. Nobody noticed until Holt's morning report showed a 60% drop in shipments and she paged the wrong team. <highlight>The data wasn't wrong. The data wasn't there.</highlight> This level we set up source freshness so dbt flags that kind of thing automatically instead of waiting for a human to notice."
     priority: high
 
-  incremental_guide:
-    id: incremental_guide
-    character: R0-B3RT
-    message: "Open <highlight>fct_shipment_log.sql</highlight>. The shape is: a config block declaring it incremental and naming the unique_key, then a select from {{ ref('stg_shipments') }}, then a Jinja <highlight>{% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}</highlight> filter. The first run loads everything. Every later run only picks up rows newer than what's already loaded. Start by adding the config block."
+  freshness_guide:
+    id: freshness_guide
+    character: NAV
+    message: "Open <highlight>helios_sources.yml</highlight>. raw_shipments has a new <highlight>loaded_at</highlight> column — that's the timestamp the dock crew stamps when a row hits the warehouse. You'll wire it up as a <highlight>freshness contract</highlight>: tell dbt which column tracks freshness, and set warn/error thresholds. Then click <highlight>dbt freshness</highlight> in the toolbar to actually run the check."
     priority: normal
 
-  first_run:
-    id: first_run
-    character: R0-B3RT
-    message: "The existing models ran fine. Now you need to build fct_shipment_log as an incremental model. On its first run, it'll load all the data. On every run after that, it'll only grab rows where updated_at is newer than the last processed timestamp."
+  lineage_hint:
+    id: lineage_hint
+    character: NAV
+    message: "Quick aside while the pipeline builds — open the <highlight>DAG</highlight> tab at the bottom. That graph is generated from your source() and ref() calls. Sources are the nodes with no inputs. <highlight>That's lineage</highlight> — and it's the same graph the docs site renders. The whole point of sources is making that graph honest: raw tables are explicit nodes, not implicit assumptions."
     priority: normal
 
-  config_done:
-    id: config_done
-    character: R0-B3RT
-    message: "Good, the config is set. <highlight>materialized='incremental'</highlight> tells dbt this model doesn't rebuild from scratch. And <highlight>unique_key='shipment_id'</highlight> means if a row with the same shipment_id comes in again, it updates the existing row instead of duplicating it. Now add the ref() and build out the query."
+  freshness_done:
+    id: freshness_done
+    character: NAV
+    message: "Config looks good. Now click <highlight>dbt freshness</highlight> in the toolbar — that's <highlight>dbt source freshness</highlight> under the hood. It runs a SQL query against each source and reports pass / warn / error. If your YAML is wrong, dbt will tell you exactly what's off."
     priority: normal
 
-  ref_done:
-    id: ref_done
-    character: R0-B3RT
-    message: "Data source is wired up. Now the key part: the <highlight>is_incremental()</highlight> filter. You need a WHERE clause that only applies on incremental runs (not the first full load). The pattern is: use is_incremental() in a Jinja if block, and filter where updated_at is greater than the max updated_at already in the table."
-    priority: normal
+  freshness_ran:
+    id: freshness_ran
+    character: NAV
+    message: "Freshness ran clean. In a real deploy, you'd schedule that command to run every few hours — and a `warn` or `error` result would page on-call. <highlight>This is how you make data outages visible.</highlight>"
+    priority: high
 
-  incremental_explain:
-    id: incremental_explain
-    character: R0-B3RT
-    message: "That's the pattern. On the first run, dbt loads everything because is_incremental() returns false. On every run after that, it only grabs rows newer than what's already in the table. This is how production pipelines handle large volumes without full rebuilds every time."
-    priority: normal
+  freshness_failure:
+    id: freshness_failure
+    character: NAV
+    message: "Freshness errored out — the YAML didn't parse the way dbt expected. Read the error in the terminal, it points at the exact line. Common issues: missing <highlight>loaded_at_field</highlight>, wrong period name (must be minute / hour / day), or warn_after / error_after pointing at a scalar instead of a {count, period} mapping."
+    priority: high
 
   level_complete:
     id: level_complete
-    character: R0-B3RT
-    message: "Pipeline runs in a fraction of the time now. Good work. One thing though, those VOSS-flagged shipments to Null Meridian keep showing up in the incremental loads. Classified cargo going to an uncharted planet that isn't even a Federation member. Something doesn't add up."
+    character: NAV
+    message: "Sources are real first-class citizens now. Lineage is honest, freshness is monitored, and the next dock outage gets caught by dbt instead of by Holt's coffee. <highlight>That's the Sources lesson.</highlight> Next up: tests — because nothing in the data has been validated yet, and the dock crew is creative with how they type values."
     priority: high

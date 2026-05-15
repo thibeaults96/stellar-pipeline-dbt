@@ -77,9 +77,140 @@ async def snapshot_dbt():
     return serialize_report(report)
 
 
+@app.post("/api/seed")
+async def seed_dbt():
+    report = GameEngine.seed()
+    return serialize_report(report)
+
+
+@app.post("/api/deps")
+async def deps_dbt():
+    report = GameEngine.deps()
+    return serialize_report(report)
+
+
 @app.post("/api/freshness")
 async def freshness_dbt():
     report = GameEngine.freshness()
+    return serialize_report(report)
+
+
+# ── Deploy (L7) ─────────────────────────────────────────────────────────────
+
+
+class GitCommitRequest(BaseModel):
+    message: str = ""
+
+
+@app.get("/api/git")
+async def get_git_state():
+    state = load_state()
+    return state.git.model_dump()
+
+
+@app.post("/api/git/stage")
+async def git_stage():
+    report = GameEngine.git_stage()
+    return serialize_report(report)
+
+
+@app.post("/api/git/commit")
+async def git_commit(body: GitCommitRequest):
+    if not body.message.strip():
+        raise HTTPException(400, "Commit message can't be empty.")
+    report = GameEngine.git_commit(body.message.strip())
+    return serialize_report(report)
+
+
+@app.post("/api/git/pr")
+async def git_pr():
+    state = load_state()
+    if not state.git.committed:
+        raise HTTPException(400, "Commit your changes before opening a PR.")
+    report = GameEngine.git_open_pr()
+    return serialize_report(report)
+
+
+@app.post("/api/git/merge")
+async def git_merge():
+    state = load_state()
+    if not state.git.pr_opened:
+        raise HTTPException(400, "Open a PR before merging.")
+    if not state.git.ci_passing:
+        raise HTTPException(400, "CI hasn't passed — run dbt build until it's green.")
+    report = GameEngine.git_merge()
+    return serialize_report(report)
+
+
+# ── Environment (L8) ────────────────────────────────────────────────────────
+
+
+class EnvironmentSetRequest(BaseModel):
+    name: str | None = None
+    git_branch: str | None = None
+    target_schema: str | None = None
+    threads: int | None = None
+    dbt_version: str | None = None
+
+
+@app.get("/api/env")
+async def get_env_state():
+    state = load_state()
+    return state.environment.model_dump()
+
+
+@app.post("/api/env")
+async def env_set(body: EnvironmentSetRequest):
+    if body.threads is not None and (body.threads < 1 or body.threads > 32):
+        raise HTTPException(400, "threads must be between 1 and 32")
+    report = GameEngine.env_set(
+        name=body.name,
+        git_branch=body.git_branch,
+        target_schema=body.target_schema,
+        threads=body.threads,
+        dbt_version=body.dbt_version,
+    )
+    return serialize_report(report)
+
+
+# ── Schedule (L9) ───────────────────────────────────────────────────────────
+
+
+_VALID_SCHEDULE_KINDS = {"manual", "interval", "cron", "on_merge"}
+
+
+class ScheduleSetRequest(BaseModel):
+    kind: str | None = None
+    expression: str | None = None
+    commands: list[str] | None = None
+    environment_name: str | None = None
+
+
+@app.get("/api/schedule")
+async def get_schedule_state():
+    state = load_state()
+    return state.schedule.model_dump()
+
+
+@app.post("/api/schedule")
+async def schedule_set(body: ScheduleSetRequest):
+    if body.kind is not None and body.kind not in _VALID_SCHEDULE_KINDS:
+        raise HTTPException(400, f"Unknown schedule kind: {body.kind}")
+    report = GameEngine.schedule_set(
+        kind=body.kind,
+        expression=body.expression,
+        commands=body.commands,
+        environment_name=body.environment_name,
+    )
+    return serialize_report(report)
+
+
+@app.post("/api/schedule/trigger")
+async def schedule_trigger():
+    state = load_state()
+    if not state.schedule.kind:
+        raise HTTPException(400, "Pick a schedule kind first.")
+    report = GameEngine.schedule_trigger()
     return serialize_report(report)
 
 
@@ -100,6 +231,11 @@ async def reset_level():
     state.test_count = 0
     state.total_xp = 0
     state.earned_badges = []
+    # Clear the Deploy/Env/Schedule simulation state on level reset so
+    # re-entering those levels starts from a clean slate.
+    state.git = state.git.__class__()
+    state.environment = state.environment.__class__()
+    state.schedule = state.schedule.__class__()
     if level_id in state.completed_levels:
         state.completed_levels.remove(level_id)
     save_state(state)
@@ -148,6 +284,17 @@ def _resolve_safe(rel_path: str) -> Path:
     return full
 
 
+# Folders the player owns — files inside are writable by default, locked only
+# when the level explicitly lists them in locked_files.
+_PROJECT_DIRS = ("models/", "macros/", "snapshots/")
+
+# Files outside the project dirs that we still want visible in the tree so the
+# narrative matches a real dbt project layout. profiles.yml and the seed CSVs
+# are always read-only — players inspect them, they don't edit them.
+_ALWAYS_LOCKED_PATHS = {"profiles.yml"}
+_EXTRA_PATTERNS = ("dbt_project.yml", "profiles.yml", "seeds/*.csv")
+
+
 def _get_locked_files() -> list[str]:
     state = load_state()
     try:
@@ -157,17 +304,62 @@ def _get_locked_files() -> list[str]:
         return []
 
 
+def _editable_extras_for_current_level() -> set[str]:
+    """Files outside the project dirs that the current level explicitly ships
+    via initial_files — those are the only non-project files the player can
+    edit (e.g. L7 ships dbt_project.yml so the player can configure
+    materializations)."""
+    state = load_state()
+    try:
+        level = load_level(state.current_level)
+    except Exception:
+        return set()
+    return {
+        path for path in level.initial_files.keys()
+        if not path.startswith(_PROJECT_DIRS) and path not in _ALWAYS_LOCKED_PATHS
+    }
+
+
+def _is_locked(rel: str, locked: list[str], editable_extras: set[str]) -> bool:
+    if rel in locked:
+        return True
+    if rel in _ALWAYS_LOCKED_PATHS:
+        return True
+    if rel.startswith("seeds/"):
+        return True
+    if rel.startswith(_PROJECT_DIRS):
+        return False
+    # Anything else outside the project dirs is locked unless the level ships it.
+    return rel not in editable_extras
+
+
 @app.get("/api/files")
 async def list_files():
     locked = _get_locked_files()
+    editable_extras = _editable_extras_for_current_level()
     files = []
-    for ext in ("*.sql", "*.yml", "*.yaml"):
+    seen: set[str] = set()
+
+    # Project dirs (models/, macros/, snapshots/) — full tree, includes .md doc blocks.
+    for ext in ("*.sql", "*.yml", "*.yaml", "*.md"):
         for path in DBT_PROJECT_DIR.rglob(ext):
             rel = str(path.relative_to(DBT_PROJECT_DIR))
-            # Skip files outside models/, sources/, macros/, and snapshots/
-            if not (rel.startswith("models/") or rel.startswith("sources/") or rel.startswith("macros/") or rel.startswith("snapshots/")):
+            if not rel.startswith(_PROJECT_DIRS):
                 continue
-            files.append({"path": rel, "locked": rel in locked})
+            if rel in seen:
+                continue
+            seen.add(rel)
+            files.append({"path": rel, "locked": _is_locked(rel, locked, editable_extras)})
+
+    # Root config + seeds — show even when read-only so the player sees the full project.
+    for pattern in _EXTRA_PATTERNS:
+        for path in DBT_PROJECT_DIR.glob(pattern):
+            rel = str(path.relative_to(DBT_PROJECT_DIR))
+            if rel in seen:
+                continue
+            seen.add(rel)
+            files.append({"path": rel, "locked": _is_locked(rel, locked, editable_extras)})
+
     return sorted(files, key=lambda f: f["path"])
 
 
@@ -176,7 +368,7 @@ async def read_file(path: str):
     full = _resolve_safe(path)
     if not full.exists():
         raise HTTPException(404, f"File not found: {path}")
-    locked = path in _get_locked_files()
+    locked = _is_locked(path, _get_locked_files(), _editable_extras_for_current_level())
     return {"path": path, "content": full.read_text(), "locked": locked}
 
 
@@ -186,8 +378,7 @@ class FileWriteRequest(BaseModel):
 
 @app.put("/api/files/{path:path}")
 async def write_file(path: str, body: FileWriteRequest):
-    locked = _get_locked_files()
-    if path in locked:
+    if _is_locked(path, _get_locked_files(), _editable_extras_for_current_level()):
         raise HTTPException(403, f"File '{path}' is locked for this level")
     full = _resolve_safe(path)
     full.parent.mkdir(parents=True, exist_ok=True)

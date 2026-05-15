@@ -1,333 +1,168 @@
 id: 2
-title: "Something's Wrong with Kepler-7b"
-subtitle: "Write the tests. Never be blind again."
-character: "R0-B3RT"
-xp_reward: 180
+title: "Boot the Pipeline"
+subtitle: "Wire up the project. Make dbt aware of your raw data."
+character: "NAV"
+xp_reward: 140
 
 badge:
-  id: quality_guardian
-  emoji: "\U0001f6e1\ufe0f"
-  name: "Quality Guardian"
-  description: "Added tests to catch bad data before it breaks downstream models."
-  xp: 180
+  id: project_engineer
+  emoji: "\U0001f527"
+  name: "Project Engineer"
+  description: "Configured the dbt project and declared sources so dbt knows where the raw data lives."
+  xp: 140
 
 locked_files:
   - models/staging/stg_planets.sql
-  - models/staging/stg_shipments.sql
-  - models/marts/fct_trade_routes.sql
-  - models/marts/fct_supply_report.sql
 
 seed_files:
-  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag,loaded_at\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0,2847-03-02T06:00:00Z\n,K7B,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1,2847-02-28T23:00:00Z\nSHP-003,K7B,MRD-9,equipment,4500kg,2847-03-02T10:00:00Z,2847-03-04T08:00:00Z,DELIVERED,0,2847-03-04T06:00:00Z\n,K7B,MRD-9,fuel_cells,900kg,2847-03-03T14:00:00Z,,IN_TRANSIT,0,2847-03-03T15:00:00Z\nSHP-005,TAU-4,K7B,medical,340kg,2847-03-04T06:00:00Z,,IN_TRANSIT,0,2847-03-04T07:00:00Z\nSHP-006,K7B,NM-00,classified,2200kg,2847-03-04T01:00:00Z,,IN_TRANSIT,1,2847-03-04T02:00:00Z\n"
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED\n"
 
 initial_files:
-  models/staging/stg_shipments.sql: |
-    -- stg_shipments.sql
-    -- Carried forward from Level 1.
+  models/sources/helios_sources.yml: |
+    # helios_sources.yml
+    #
+    # This file is how dbt learns about the raw tables it can read from.
+    # Each entry under `tables:` makes that table reachable via
+    #     {{ source('helios', '<table_name>') }}
+    # from your models. Without it, dbt has no idea raw_planets even exists,
+    # and stg_planets.sql can't compile.
+    #
+    # Fill in the two TODOs below — each maps to an objective in the panel.
+    # The raw CSVs are loaded by `dbt seed` into the `main` schema of DuckDB.
 
-    with source as (
-
-        select * from {{ source('federation', 'raw_shipments') }}
-
-    ),
-
-    renamed as (
-
-        select
-            shipment_id,
-            origin_planet as origin_planet_id,
-            dest_planet as destination_planet_id,
-            cargo_type,
-            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
-            cast(departed_at as timestamp) as departed_at,
-            cast(arrived_at as timestamp) as arrived_at,
-            lower(status) as status,
-            voss_flag
-
-        from source
-
-    )
-
-    select * from renamed
-
-  models/marts/fct_trade_routes.sql: |
-    -- fct_trade_routes.sql
-    -- Carried forward from Level 1.
-
-    with shipments as (
-
-        select * from {{ ref('stg_shipments') }}
-
-    ),
-
-    planets as (
-
-        select * from {{ ref('stg_planets') }}
-
-    ),
-
-    routes as (
-
-        select
-            s.shipment_id,
-            s.cargo_type,
-            s.cargo_mass_kg,
-            s.status,
-            s.departed_at,
-            s.arrived_at,
-            origin.planet_name as origin_planet_name,
-            dest.planet_name as destination_planet_name,
-            origin.sector as origin_sector
-
-        from shipments s
-        left join planets origin on s.origin_planet_id = origin.planet_id
-        left join planets dest on s.destination_planet_id = dest.planet_id
-
-    )
-
-    select * from routes
-
-  models/marts/fct_supply_report.sql: |
-    -- fct_supply_report.sql
-
-    with trade_routes as (
-
-        select * from {{ ref('fct_trade_routes') }}
-
-    )
-
-    select
-        origin_sector,
-        cargo_type,
-        count(*) as shipment_count,
-        sum(cargo_mass_kg) as total_mass_kg,
-        sum(case when status = 'delivered' then 1 else 0 end) as delivered_count
-
-    from trade_routes
-    group by 1, 2
-
-  models/sources/federation_sources.yml: |
     version: 2
 
     sources:
-      - name: federation
-        description: "Raw telemetry from Federation sensor arrays"
+      - name: helios
+        description: "Raw cargo telemetry received at Helios Waystation"
         schema: main
         tables:
-          - name: raw_shipments
-            description: "Cargo shipment records from all registered vessels"
-            # This source needs monitoring. Check the objectives panel.
-            loaded_at_field: loaded_at
-            # Fresh configs go under the config block for a source.
-            # See the dbt docs for syntax.
-            columns:
-              - name: shipment_id
-              - name: status
+          # TODO: declare the raw cargo shipment table.
+          # The seed file is named raw_shipments.csv.
+          # Pattern:
+          #   - name: <table_name>
+          #     description: "<one-line summary>"
 
-          - name: raw_planets
-            description: "Planetary registry and resource data"
-
-  models/staging/_stg_shipments.yml: |
-    version: 2
-
-    models:
-      - name: stg_shipments
-        description: "Staged cargo shipment data from Federation sensor arrays"
-        columns:
-          - name: shipment_id
-            description: "Unique identifier for each shipment"
-            # This column is a primary key. Add a 'tests:' section here
-            # with not_null and unique tests. See the dbt docs for syntax.
-
-          - name: status
-            description: "Current status of the shipment"
-
-# ── Phase 0: Build the pipeline so we can see the problem ──
-# ── Phase 1: Add tests on shipment_id ──
-# ── Phase 2: Configure freshness ──
-# ── Phase 3: Run tests and see them catch the bad data ──
+          # TODO: declare the raw planetary registry table.
+          # The seed file is named raw_planets.csv.
 
 objectives:
-  - id: initial_run
-    label: "Run dbt — the models build cleanly even though the data is broken"
-    hint: "Click 'dbt run' or press Cmd+Enter. Everything will compile and pass — that's exactly the point. dbt doesn't validate row contents unless you tell it to. Running now also materializes the tables so the tests you write next have something to check against."
-    # model_passes on the downstream leaf confirms the full pipeline ran —
-    # if fct_supply_report built, every upstream model did too. We avoid
-    # all_models_pass here because that check is gated on every other
-    # objective being done first (see GameEngine._check_all).
+  - id: load_seeds
+    label: "Click 'dbt seed' to load the raw CSVs into DuckDB"
+    hint: "dbt seed is the first command on any new project — it loads everything under seeds/ into the warehouse so your models have something to read from."
     check:
-      type: model_passes
-      model: fct_supply_report
+      type: duckdb_row_count
+      table: raw_shipments
+      min_rows: 1
 
-  - id: add_not_null_test
-    label: "Add a not_null test on shipment_id in _stg_shipments.yml"
-    hint: "Under the shipment_id column's tests list, add '- not_null'. This tells dbt to check that every row has a value."
-    # Reads the test out of the manifest so dbt itself confirms the test is
-    # attached to stg_shipments.shipment_id — a YAML block parked under the
-    # wrong column or a sibling model can't satisfy this check.
+  - id: declare_raw_shipments
+    label: "Declare raw_shipments under tables: in helios_sources.yml"
+    hint: "Replace the first TODO with: `- name: raw_shipments` and a short description. Indentation matters — it lives under `tables:` of the `helios` source."
     check:
-      type: manifest_column_test
-      model: stg_shipments
-      column: shipment_id
-      test_name: not_null
+      type: file_contains
+      filename: models/sources/helios_sources.yml
+      pattern: "-\\s+name:\\s*raw_shipments"
 
-  - id: add_unique_test
-    label: "Add a unique test on shipment_id in _stg_shipments.yml"
-    hint: "Same spot, add '- unique'. This catches duplicate primary keys."
+  - id: declare_raw_planets
+    label: "Declare raw_planets under tables: in helios_sources.yml"
+    hint: "Same pattern as raw_shipments — `- name: raw_planets` with a description. stg_planets.sql calls `source('helios', 'raw_planets')` and won't compile until this is wired up."
     check:
-      type: manifest_column_test
-      model: stg_shipments
-      column: shipment_id
-      test_name: unique
+      type: file_contains
+      filename: models/sources/helios_sources.yml
+      pattern: "-\\s+name:\\s*raw_planets"
 
-  - id: run_tests
-    label: "Run dbt test and see the tests catch the bad data"
-    hint: "Click 'dbt test'. The not_null test should fail because there are rows with NULL shipment_id. That's the whole point."
-    check:
-      type: tests_ran_with_failures
-
-  - id: configure_freshness
-    label: "Configure freshness on raw_shipments (warn after 24h, error after 48h) and run dbt freshness to verify"
-    hint: "In federation_sources.yml, give raw_shipments a freshness: block with warn_after: {count: 24, period: hour} and error_after: {count: 48, period: hour}. Then click `dbt freshness` in the toolbar — if dbt accepts the config and runs the check, this objective passes. If your YAML is wrong, dbt will tell you exactly what's off in the terminal."
-    check:
-      type: source_freshness_ran
-      source_name: federation
-      table_name: raw_shipments
-
-  - id: all_green
-    label: "Run dbt — all models pass"
-    hint: "Click 'dbt run' to confirm everything is still building cleanly with your new configuration."
+  - id: run_pipeline
+    label: "Click 'dbt run' — stg_planets should build cleanly now that sources are declared"
+    hint: "If your sources YAML is missing a table, dbt errors out with a clear `Compilation Error` pointing at the source('helios', '...') that can't resolve. Once both tables are declared, the locked stg_planets.sql will compile and run."
     check:
       type: all_models_pass
 
 narrative_triggers:
-  # ── Level start: set the scene ──
   - id: nt_start
     event: LEVEL_START
-    narrative_key: alert
+    narrative_key: intro
     once: true
 
   - id: nt_start_guide
     event: LEVEL_START
-    narrative_key: intro_guide
+    narrative_key: project_tour
     once: true
 
-  # ── After first dbt run, point out the data problem ──
-  - id: nt_first_run
-    event: FIRST_RUN
-    narrative_key: data_problem
+  - id: nt_seed_done
+    event: OBJECTIVE_load_seeds_COMPLETE
+    narrative_key: seed_done
     once: true
 
-  # ── Tests written, guide them to run ──
-  - id: nt_tests_written
-    event: OBJECTIVE_add_unique_test_COMPLETE
-    narrative_key: tests_written_guide
+  - id: nt_first_run_fail
+    event: RUN_FAILURE
+    narrative_key: run_fail
     once: true
 
-  # ── Tests ran and caught failures ──
-  - id: nt_test_results
-    event: OBJECTIVE_run_tests_COMPLETE
-    narrative_key: test_results_explain
+  - id: nt_shipments_done
+    event: OBJECTIVE_declare_raw_shipments_COMPLETE
+    narrative_key: shipments_done
     once: true
 
-  # ── Teach dbt build after tests are done ──
-  - id: nt_build_tip
-    event: OBJECTIVE_run_tests_COMPLETE
-    narrative_key: build_tip
+  - id: nt_planets_done
+    event: OBJECTIVE_declare_raw_planets_COMPLETE
+    narrative_key: planets_done
     once: true
 
-  # ── Guide freshness after tests are done ──
-  - id: nt_freshness_guide
-    event: OBJECTIVE_run_tests_COMPLETE
-    narrative_key: freshness_guide
+  - id: nt_run_success
+    event: RUN_SUCCESS
+    narrative_key: run_success
     once: true
 
-  - id: nt_freshness_command_explain
-    event: OBJECTIVE_run_tests_COMPLETE
-    narrative_key: freshness_command_explain
-    once: true
-
-  # ── If freshness fails (config issue), explain how to read it ──
-  - id: nt_freshness_failure
-    event: FRESHNESS_FAILURE
-    narrative_key: freshness_failure
-    once: true
-
-  # ── Final run ──
-  - id: nt_all_green_guide
-    event: OBJECTIVE_configure_freshness_COMPLETE
-    narrative_key: final_run_guide
-    once: true
-
-  # ── Level complete ──
   - id: nt_complete
     event: LEVEL_COMPLETE
     narrative_key: level_complete
     once: true
 
 narrative_script:
-  alert:
-    id: alert
-    character: R0-B3RT
-    message: "Hey, we've got a problem. It's 03:00 and <highlight>fct_supply_report is producing bad numbers.</highlight> Three fleets are waiting on cargo manifests and the data doesn't add up. Something's wrong upstream. Let's figure it out."
+  intro:
+    id: intro
+    character: NAV
+    message: "Now we set up the project properly. Two things have to exist before dbt can do anything useful: the raw data has to be loaded, and dbt has to know about it. <highlight>Loading is dbt seed. Knowing about it is the sources YAML.</highlight> We'll do both this level."
     priority: high
 
-  intro_guide:
-    id: intro_guide
-    character: R0-B3RT
-    message: "First thing, kick off a <highlight>dbt run</highlight> so we can see what we're dealing with. The models will all compile and pass — that's actually the problem, because the data is broken. Once it's built, click <highlight>raw_shipments</highlight> under SOURCE DATA to see what's off, then open <highlight>_stg_shipments.yml</highlight> where you'll add tests. The TODO comments show you the syntax."
+  project_tour:
+    id: project_tour
+    character: NAV
+    message: "Quick orientation on the file tree. <highlight>dbt_project.yml</highlight> at the root is the project config — name, profile, paths. <highlight>seeds/</highlight> holds your raw CSVs. <highlight>models/sources/</highlight> is where you declare sources for dbt. <highlight>models/staging/</highlight> and <highlight>models/marts/</highlight> are where your SQL transformations live. Open <highlight>helios_sources.yml</highlight> — you'll see two TODO comments where the source tables need to be declared."
     priority: normal
 
-  data_problem:
-    id: data_problem
-    character: R0-B3RT
-    message: "See the output? Everything built successfully. But look at raw_shipments in the preview. <highlight>Two rows have no shipment_id.</highlight> That's supposed to be the primary key. Without tests on that column, dbt has no way of knowing the data is broken. It just passes the NULLs downstream into every model that depends on it."
+  seed_done:
+    id: seed_done
+    character: NAV
+    message: "Seeds loaded. Now <highlight>raw_shipments</highlight> and <highlight>raw_planets</highlight> are real tables sitting in DuckDB under the <highlight>main</highlight> schema. But dbt itself doesn't know about them yet — only the database does. That's what the sources YAML fixes."
+    priority: normal
+
+  run_fail:
+    id: run_fail
+    character: NAV
+    message: "Run failed. Read the error in the terminal — if it says <highlight>Compilation Error</highlight> and mentions a source that can't resolve, that means helios_sources.yml is missing the table. Sources are case-sensitive and indentation-sensitive. The pattern is exactly: `- name: raw_table_name` under `tables:`."
+    priority: normal
+
+  shipments_done:
+    id: shipments_done
+    character: NAV
+    message: "raw_shipments is declared. One more — add raw_planets the same way. Once both are in, the locked <highlight>stg_planets.sql</highlight> will have everything it needs to compile."
+    priority: normal
+
+  planets_done:
+    id: planets_done
+    character: CDR. HOLT
+    message: "I'm seeing both sources in your YAML. Good — that means anyone who walks into this project later can see exactly which raw tables we depend on. <highlight>Self-documenting infrastructure.</highlight> That's the whole pitch."
+    priority: normal
+
+  run_success:
+    id: run_success
+    character: NAV
+    message: "stg_planets built. Notice dbt resolved <highlight>source('helios', 'raw_planets')</highlight> to the actual seeded table at compile time — that's the indirection that makes sources useful. If we ever move raw_planets to a different schema, we change one line of YAML, not every model."
     priority: high
-
-  tests_written_guide:
-    id: tests_written_guide
-    character: R0-B3RT
-    message: "Good, you've got not_null and unique tests defined. Now you need to actually run them. Click <highlight>dbt test</highlight> in the terminal. The not_null test should fail because of those NULL rows. That's not a bad thing, it means your tests are working."
-    priority: normal
-
-  test_results_explain:
-    id: test_results_explain
-    character: R0-B3RT
-    message: "There it is. The tests caught the bad rows. Here's what matters: <highlight>the models still build, but now the problem is visible</highlight>. In production, a failing test can block a deploy or page someone. You didn't fix the data, that's the source team's problem. What you did is make sure nobody can miss it. That's the job."
-    priority: high
-
-  build_tip:
-    id: build_tip
-    character: R0-B3RT
-    message: "Quick tip: you've been using <highlight>dbt run</highlight> and <highlight>dbt test</highlight> separately. There's a command called <highlight>dbt build</highlight> that does everything in one step: seeds, models, tests, and snapshots, all in dependency order. From here on out you can use that instead of running them separately."
-    priority: normal
-
-  freshness_guide:
-    id: freshness_guide
-    character: R0-B3RT
-    message: "One more thing. Open <highlight>federation_sources.yml</highlight> and look at the raw_shipments source. There's no freshness monitoring on it. If the source data stops updating, nobody finds out until reports start looking wrong. Add a <highlight>freshness:</highlight> block (top-level on the table, or under a `config:` block — both work) with <highlight>warn_after</highlight> and <highlight>error_after</highlight> thresholds so dbt can flag stale data. Then click <highlight>dbt freshness</highlight> in the toolbar — that's how you actually run the check."
-    priority: normal
-
-  freshness_command_explain:
-    id: freshness_command_explain
-    character: R0-B3RT
-    message: "Quick context on the command: <highlight>dbt source freshness</highlight> runs a SQL query against each configured source — basically <highlight>select max(loaded_at_field) from the_source</highlight> — and compares the age of the newest row to your warn_after / error_after thresholds. If your config is structurally valid, dbt actually executes the check and reports pass / warn / error. If it's malformed, dbt errors out with a useful message. That's why we wire it up: you don't have to guess if the YAML is right, dbt tells you."
-    priority: normal
-
-  freshness_failure:
-    id: freshness_failure
-    character: R0-B3RT
-    message: "Freshness errored out. That means the YAML didn't parse the way dbt expected. Read the error in the terminal — it'll point at the exact line. Common issues: missing <highlight>loaded_at_field</highlight>, wrong period name (it has to be minute / hour / day), or warn_after / error_after pointing at a scalar instead of a {count, period} mapping."
-    priority: high
-
-  final_run_guide:
-    id: final_run_guide
-    character: R0-B3RT
-    message: "Freshness config is set. Run dbt one more time to confirm all models are still building cleanly."
-    priority: normal
 
   level_complete:
     id: level_complete
-    character: R0-B3RT
-    message: "Supply fleets rerouted, crisis handled. You caught a data quality issue with tests instead of trying to patch the data yourself. And you set up freshness monitoring so this kind of thing gets flagged early next time. Nice work."
+    character: NAV
+    message: "Project is wired up. Seeds loaded, sources declared, first model built. <highlight>That's Set Up dbt.</highlight> Next level we leave the scaffolding behind and write real staging and mart models. Dr. Matsuri's been waiting to talk to you about the data."
     priority: high

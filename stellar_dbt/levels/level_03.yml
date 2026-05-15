@@ -1,219 +1,272 @@
 id: 3
-title: "The Smuggler's Ledger"
-subtitle: "Document your models. Trust nothing."
-character: "R0-B3RT"
+title: "First Models"
+subtitle: "Staging, marts, and ref(). Build the spine of the warehouse."
+character: "NAV"
 xp_reward: 200
 
 badge:
-  id: data_librarian
-  emoji: "\U0001f4d6"
-  name: "Data Librarian"
-  description: "Documented your models and added accepted_values tests to lock down data quality."
+  id: first_model
+  emoji: "\U0001f680"
+  name: "First Model"
+  description: "Built a staging model and a mart, wired together with ref() — the dbt way."
   xp: 200
 
 locked_files:
   - models/staging/stg_planets.sql
-  - models/staging/stg_shipments.sql
-  - models/marts/fct_trade_routes.sql
+  - models/sources/helios_sources.yml
 
 seed_files:
-  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status,voss_flag\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED,0\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED,0\nSHP-003,MRD-9,NM-00,humanitarian_aid,800kg,2847-02-28T22:00:00Z,,IN_TRANSIT,1\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED,0\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED,0\nSHP-007,K7B,NM-00,UNKNOWN_TYPE,500kg,2847-03-04T10:00:00Z,,IN_TRANSIT,1\n"
+  raw_shipments.csv: "shipment_id,origin_planet,dest_planet,cargo_type,cargo_mass,departed_at,arrived_at,status\nSHP-001,K7B,MRD-9,supplies,1200kg,2847-03-01T08:00:00Z,2847-03-02T14:00:00Z,DELIVERED\nSHP-002,TAU-4,K7B,equipment,4500kg,2847-03-01T12:00:00Z,2847-03-03T08:00:00Z,DELIVERED\nSHP-003,MRD-9,ALF-C,humanitarian_aid,800kg,2847-02-28T22:00:00Z,2847-03-02T18:00:00Z,DELIVERED\nSHP-004,ALF-C,TAU-4,fuel_cells,9200kg,2847-03-02T06:00:00Z,2847-03-04T10:00:00Z,DELIVERED\nSHP-005,K7B,MRD-9,medical,340kg,2847-03-03T14:00:00Z,2847-03-04T22:00:00Z,DELIVERED\n"
 
 initial_files:
   models/staging/stg_shipments.sql: |
-    -- stg_shipments.sql (carried forward)
+    -- stg_shipments.sql
+    -- Staging model for raw cargo shipment data.
+    --
+    -- How this works:
+    --   The "with source as (...)" block pulls raw data using source().
+    --   source() tells dbt where the raw table lives so you don't hardcode names.
+    --   The "renamed as (...)" block is where you clean up the columns.
+    --   The final "select * from renamed" outputs your cleaned version.
+    --
+    -- What to do:
+    --   1. Click "raw_shipments" under SOURCE DATA to see the raw columns
+    --   2. Open stg_planets.sql to see a finished example
+    --   3. Fill in the renamed block below
+    --   4. Check the objectives panel for what each column needs
+    --
+    -- Raw columns: shipment_id, origin_planet, dest_planet, cargo_type,
+    --              cargo_mass, departed_at, arrived_at, status
 
     with source as (
-        select * from {{ source('federation', 'raw_shipments') }}
+
+        select * from {{ source('helios', 'raw_shipments') }}
+
     ),
+
     renamed as (
-        select shipment_id, origin_planet as origin_planet_id,
-            dest_planet as destination_planet_id, cargo_type,
-            cast(replace(cargo_mass, 'kg', '') as integer) as cargo_mass_kg,
-            cast(departed_at as timestamp) as departed_at,
-            cast(arrived_at as timestamp) as arrived_at,
-            lower(status) as status, voss_flag
+
+        select
+            -- Your columns go here. Check stg_planets.sql for the pattern:
+            --     planet_id,
+            --     planet_name,
+            --     cast(population as bigint) as population
+            *
+
         from source
+
     )
+
     select * from renamed
 
   models/marts/fct_trade_routes.sql: |
-    -- fct_trade_routes.sql (carried forward)
+    -- fct_trade_routes.sql
+    -- Mart model: combines staging models into something analysts can actually use.
+    --
+    -- Quick refresher on ref() vs source():
+    --   source() pulls from raw external tables (used in staging models)
+    --   ref() pulls from other dbt models (used here, in marts)
+    --
+    -- Example:  select * from  ref('stg_shipments')  (wrap in double curly braces)
+    --
+    -- Quick context on materializations:
+    --   Every dbt model is a SELECT that gets materialized somewhere. By
+    --   default, models materialize as VIEWS — lightweight, always fresh,
+    --   no storage. But marts are usually queried a lot by analysts and
+    --   dashboards, so we materialize them as TABLES to cache the result.
+    --
+    --   You set materialization per-model with a config block at the top:
+    --
+    --       {{ config(materialized='table') }}
+    --
+    --   (You can also configure it per-folder in dbt_project.yml — covered
+    --   in a later level. Inline config wins when both are set.)
+    --
+    -- What to do:
+    --   1. Add the config block at the top to materialize this as a table
+    --   2. Use ref() to pull from stg_shipments and stg_planets
+    --   3. Join them so each shipment gets its origin planet name
+    --   4. Add a summary with count and total mass per origin planet
+    --
+    -- Check the objectives panel for the specifics.
 
-    with shipments as (
-        select * from {{ ref('stg_shipments') }}
-    ), planets as (
-        select * from {{ ref('stg_planets') }}
-    ), routes as (
-        select s.shipment_id, s.cargo_type, s.cargo_mass_kg, s.status,
-            s.departed_at, s.arrived_at,
-            origin.planet_name as origin_planet_name,
-            dest.planet_name as destination_planet_name
-        from shipments s
-        left join planets origin on s.origin_planet_id = origin.planet_id
-        left join planets dest on s.destination_planet_id = dest.planet_id
-    )
-    select * from routes
-
-  models/sources/federation_sources.yml: |
-    version: 2
-
-    sources:
-      - name: federation
-        description: "Raw telemetry data from Federation sensor arrays"
-        schema: main
-        tables:
-          - name: raw_shipments
-            description: "Cargo shipment records from all registered vessels"
-          - name: raw_planets
-            description: "Planetary registry and resource data"
-
-  models/staging/_stg_shipments.yml: |
-    version: 2
-
-    models:
-      - name: stg_shipments
-        # This model needs a description. What does it do?
-        columns:
-          - name: shipment_id
-            # What is this column? Add a description.
-          - name: cargo_type
-            # Add an accepted_values test here.
-            # Valid cargo types (from the source data):
-            #   supplies, equipment, humanitarian_aid, fuel_cells, medical
-            # Do NOT include UNKNOWN_TYPE — that is invalid data the test
-            # should catch on the next dbt test run.
-          - name: status
-            # Add an accepted_values test here.
-            # The staging model lowercases status, so the valid values are
-            # 'delivered' and 'in_transit' (lowercase).
-
-  models/marts/_fct_trade_routes.yml: |
-    version: 2
-
-    models:
-      - name: fct_trade_routes
-        # What does this mart model represent?
-        columns:
-          - name: shipment_id
-          - name: origin_planet_name
-          - name: destination_planet_name
+    select 1 as placeholder
+    -- Replace this with your query
 
 objectives:
-  # Phase 1: Document the staging model
-  - id: describe_stg_model
-    label: "Add a description to the stg_shipments model"
-    hint: "In _stg_shipments.yml, add description: 'Cleaned shipment data...' (or similar) under the model name."
-    # Read the description from the compiled manifest so we know dbt
-    # actually attached it to the right model — and require enough text
-    # that placeholder values like 'x' or 'TODO' don't pass.
+  # ── Phase 1: Clean the staging model ──
+  - id: rename_columns
+    label: "Rename origin_planet → origin_planet_id and dest_planet → destination_planet_id"
+    hint: "Use the AS keyword: origin_planet as origin_planet_id. Renaming adds clarity — '_id' signals this is a foreign key."
     check:
-      type: manifest_model_description
-      model: stg_shipments
-      min_length: 10
+      type: duckdb_columns_exist
+      table: stg_shipments
+      columns: [origin_planet_id, destination_planet_id]
 
-  - id: describe_shipment_id
-    label: "Add a description to the shipment_id column"
-    hint: "Under the shipment_id column entry, add description: 'Unique identifier for each shipment' or similar."
+  - id: cast_timestamps
+    label: "Cast departed_at and arrived_at as timestamps"
+    hint: "Either form works: `cast(departed_at as timestamp) as departed_at` or `departed_at::timestamp`. Do the same for arrived_at."
     check:
-      type: manifest_column_description
-      model: stg_shipments
-      column: shipment_id
-      min_length: 10
+      type: duckdb_columns_exist
+      table: stg_shipments
+      columns: [departed_at, arrived_at]
+      types:
+        departed_at: TIMESTAMP
+        arrived_at: TIMESTAMP
 
-  # Phase 2: Add accepted_values test
-  - id: add_status_accepted_values
-    label: "Add an accepted_values test on the status column with values ['delivered', 'in_transit']"
-    hint: "Under the status column in _stg_shipments.yml, add a tests section with accepted_values and the values list ['delivered', 'in_transit']. The staging model lowercases status, so those are the only two valid values."
-    # Reads the test node out of the manifest so dbt itself confirms the test
-    # is attached to stg_shipments.status, and verifies the values list
-    # actually contains 'delivered' and 'in_transit' — a placeholder list
-    # like ['foo', 'bar'] won't satisfy this check the way regex would.
+  - id: cast_cargo_mass
+    label: "Clean cargo_mass → cargo_mass_kg as an integer (strip the 'kg' suffix first)"
+    hint: "The raw values look like '1200kg'. Use replace(cargo_mass, 'kg', '') to strip the suffix, then cast to integer, then alias as cargo_mass_kg."
     check:
-      type: manifest_column_test
-      model: stg_shipments
-      column: status
-      test_name: accepted_values
-      required_values: [delivered, in_transit]
+      type: duckdb_columns_exist
+      table: stg_shipments
+      columns: [cargo_mass_kg]
+      types:
+        cargo_mass_kg: INTEGER
 
-  - id: add_cargo_type_accepted_values
-    label: "Add an accepted_values test on cargo_type with the valid cargo types"
-    hint: "Valid cargo types in this dataset: supplies, equipment, humanitarian_aid, fuel_cells, medical. Do NOT include UNKNOWN_TYPE — the test should catch SHP-007 as invalid."
+  - id: normalize_status
+    label: "Lowercase status values → status (e.g. 'DELIVERED' becomes 'delivered')"
+    hint: "Use lower(status) as status."
     check:
-      type: manifest_column_test
-      model: stg_shipments
-      column: cargo_type
-      test_name: accepted_values
-      required_values: [supplies, equipment, humanitarian_aid, fuel_cells, medical]
-      # If UNKNOWN_TYPE is in the values list, the test would treat the bad
-      # row as valid — exactly what the level is teaching against. Reject it.
-      forbidden_values: [UNKNOWN_TYPE, unknown_type]
+      type: duckdb_column_values
+      table: stg_shipments
+      query: "SELECT * FROM main.stg_shipments WHERE status != lower(status)"
 
-  # Phase 3: Document the mart
-  - id: describe_mart_model
-    label: "Add a description to the fct_trade_routes model"
-    hint: "In _fct_trade_routes.yml, add a description explaining what the mart does."
+  # ── Phase 2: Build the mart with ref() ──
+  - id: ref_shipments_in_mart
+    label: "Pull shipment data into fct_trade_routes using ref()"
+    hint: "In dbt, source() connects to raw data, but ref() connects models to each other. In your mart, write: {{ ref('stg_shipments') }}"
     check:
-      type: manifest_model_description
+      type: has_ref_call
+      filename: models/marts/fct_trade_routes.sql
+      target_model: stg_shipments
+
+  - id: ref_planets_in_mart
+    label: "Pull planet data into fct_trade_routes using ref()"
+    hint: "Same pattern: {{ ref('stg_planets') }}. This creates a dependency in the DAG — dbt will build stg_planets before fct_trade_routes automatically."
+    check:
+      type: has_ref_call
+      filename: models/marts/fct_trade_routes.sql
+      target_model: stg_planets
+
+  - id: join_models
+    label: "Join shipments to planets — include origin_planet_name in the output"
+    hint: "Join stg_planets to get the planet name for each shipment's origin. Use: left join stg_planets origin on origin_planet_id = planet_id, then select origin.planet_name as origin_planet_name."
+    check:
+      type: duckdb_columns_exist
+      table: fct_trade_routes
+      columns: [origin_planet_name]
+
+  - id: add_aggregation
+    label: "Add a shipment_count and total_mass_kg aggregation grouped by origin_planet_name"
+    hint: "Use count(*) as shipment_count and sum(cargo_mass_kg) as total_mass_kg with a GROUP BY on origin_planet_name. You can do this in a final CTE or a separate query block."
+    check:
+      type: duckdb_columns_exist
+      table: fct_trade_routes
+      columns: [origin_planet_name, shipment_count, total_mass_kg]
+
+  - id: no_hardcoded_refs
+    label: "No hardcoded table references in the mart"
+    hint: "If you wrote a table name directly (like schema.table), replace it with ref(). That way if the table moves, your model still works."
+    check:
+      type: no_hardcoded_refs
+      filename: models/marts/fct_trade_routes.sql
+
+  - id: materialize_as_table
+    label: "Materialize fct_trade_routes as a table (config block at the top)"
+    hint: "Add `{{ config(materialized='table') }}` as the first line of fct_trade_routes.sql. Marts get queried a lot by analysts and dashboards, so they're typically materialized as tables (cached on disk) instead of views (recomputed every query). The default is view — you have to opt into table."
+    # Reads the resolved materialization out of manifest.json so dbt itself
+    # has to agree the model is a table. Catches the case where the config
+    # block is malformed and dbt silently falls back to the default.
+    check:
+      type: manifest_model_config
       model: fct_trade_routes
-      min_length: 10
+      key: materialized
+      value: table
 
-  # Phase 4: Run tests
-  - id: run_tests
-    label: "Run dbt test and see accepted_values catch the bad cargo_type"
-    hint: "Click 'dbt test'. The accepted_values test on cargo_type should fail because of the UNKNOWN_TYPE value in the data."
-    check:
-      type: tests_ran_with_failures
-
-  # Phase 5: Confirm models still build
   - id: all_green
     label: "Run dbt — all models pass"
-    hint: "Click 'dbt run' to confirm all models are still building cleanly alongside your new docs and tests."
+    hint: "Click 'dbt run' to build all models."
     check:
       type: all_models_pass
 
 narrative_triggers:
-  - id: nt_start
+  - id: nt_intro
     event: LEVEL_START
     narrative_key: intro
     once: true
 
-  - id: nt_start_guide
+  - id: nt_matsuri
     event: LEVEL_START
-    narrative_key: doc_guide
+    narrative_key: matsuri_briefing
     once: true
 
-  - id: nt_first_run
-    event: FIRST_RUN
-    narrative_key: first_run_note
+  - id: nt_staging_guide
+    event: LEVEL_START
+    narrative_key: staging_guide
     once: true
 
-  - id: nt_stg_described
-    event: OBJECTIVE_describe_shipment_id_COMPLETE
-    narrative_key: good_docs
+  - id: nt_first_run_fail
+    event: RUN_FAILURE
+    narrative_key: first_run_fail
     once: true
 
-  - id: nt_accepted_values_guide
-    event: OBJECTIVE_describe_shipment_id_COMPLETE
-    narrative_key: accepted_values_guide
+  - id: nt_source_staging_pattern
+    event: OBJECTIVE_rename_columns_COMPLETE
+    narrative_key: source_staging_pattern
+    once: true
+
+  - id: nt_staging_done
+    event: OBJECTIVE_normalize_status_COMPLETE
+    narrative_key: staging_complete
     once: true
 
   - id: nt_mart_guide
-    event: OBJECTIVE_add_cargo_type_accepted_values_COMPLETE
-    narrative_key: mart_doc_guide
+    event: OBJECTIVE_normalize_status_COMPLETE
+    narrative_key: mart_guide
     once: true
 
-  - id: nt_test_results
-    event: OBJECTIVE_run_tests_COMPLETE
-    narrative_key: test_results
+  - id: nt_hardcode
+    event: HARDCODE_DETECTED
+    narrative_key: hardcode_warning
     once: true
 
-  - id: nt_all_green_guide
-    event: OBJECTIVE_run_tests_COMPLETE
-    narrative_key: final_run_guide
+  - id: nt_ref_explain
+    event: OBJECTIVE_ref_shipments_in_mart_COMPLETE
+    narrative_key: ref_importance
     once: true
 
-  - id: nt_complete
+  - id: nt_ref_done
+    event:
+      - OBJECTIVE_ref_planets_in_mart_COMPLETE
+      - OBJECTIVE_ref_shipments_in_mart_COMPLETE
+    narrative_key: join_guide
+    requires:
+      - ref_planets_in_mart
+      - ref_shipments_in_mart
+    once: true
+
+  - id: nt_materialization
+    event: OBJECTIVE_materialize_as_table_COMPLETE
+    narrative_key: materialization_explain
+    once: true
+
+  - id: nt_all_green
+    event: RUN_SUCCESS
+    narrative_key: first_success
+    once: true
+
+  - id: nt_all_green_explain
+    event: RUN_SUCCESS
+    narrative_key: dag_explanation
+    once: true
+
+  - id: nt_analyses_aside
+    event: RUN_SUCCESS
+    narrative_key: analyses_aside
+    once: true
+
+  - id: nt_level_complete
     event: LEVEL_COMPLETE
     narrative_key: level_complete
     once: true
@@ -221,54 +274,90 @@ narrative_triggers:
 narrative_script:
   intro:
     id: intro
-    character: R0-B3RT
-    message: "Alright, the pipeline works but nobody can tell what anything means. There's no documentation, no descriptions, and there are some cargo types showing up that shouldn't exist. We need to lock this down."
+    character: NAV
+    message: "Okay — sources are wired up, so dbt knows where the raw data lives. Now we actually <highlight>transform</highlight> it. Two layers this level: <highlight>staging</highlight> (clean per source table) and <highlight>marts</highlight> (analyst-facing combos of staging models). That's the standard dbt project shape."
     priority: high
 
-  doc_guide:
-    id: doc_guide
-    character: R0-B3RT
-    message: "Open <highlight>_stg_shipments.yml</highlight>. Right now the model and columns have no descriptions. In a real project, descriptions show up in dbt docs and help anyone reading the code understand what each model and column is for. Start by adding a description to the model itself, then to the key columns."
+  matsuri_briefing:
+    id: matsuri_briefing
+    character: DR. MATSURI
+    message: "Kai Matsuri, head of logistics — Holt said you'd be down. Quick context on the cargo data: every row in raw_shipments is one delivery. <highlight>cargo_mass comes in as a string with a 'kg' suffix</highlight> because the loading bay scales output formatted text. status is whatever the dock crew typed — usually uppercase, sometimes mixed. Origin and destination columns are short planet codes. The planet name lives over in raw_planets. Standard mess. Clean it up however you like."
     priority: normal
 
-  first_run_note:
-    id: first_run_note
-    character: R0-B3RT
-    message: "Models built fine. But take a look at the data preview for stg_shipments. See that row with cargo_type 'unknown_type'? That's not a valid cargo type. Descriptions help people understand the data, but <highlight>accepted_values tests</highlight> actually enforce what's allowed."
+  staging_guide:
+    id: staging_guide
+    character: NAV
+    message: "Open <highlight>stg_shipments.sql</highlight> and click <highlight>raw_shipments</highlight> under SOURCE DATA so you can see the raw columns. <highlight>stg_planets.sql</highlight> is a finished example — same pattern. Basically: rename columns to use clearer IDs, cast types properly, normalize the values. The objectives panel has the specifics."
     priority: normal
 
-  good_docs:
-    id: good_docs
-    character: R0-B3RT
-    message: "Nice, descriptions are in. In dbt, these show up when you run <highlight>dbt docs generate</highlight>. Anyone browsing the project can see what each model and column does without reading the SQL. Now let's add some tests that actually enforce data quality."
+  first_run_fail:
+    id: first_run_fail
+    character: NAV
+    message: "Run didn't work — that's fine. Check the error output in the terminal, dbt is pretty good about telling you exactly what file and line broke. Seriously, read the error message, it'll save you a lot of guessing."
     priority: normal
 
-  accepted_values_guide:
-    id: accepted_values_guide
-    character: R0-B3RT
-    message: "Time for <highlight>accepted_values</highlight> tests. These check a column only contains values from a specific list. Add one under <highlight>status</highlight> (valid values are <highlight>'delivered'</highlight> and <highlight>'in_transit'</highlight> — lowercase, since the staging model already normalizes them). Then add one under <highlight>cargo_type</highlight>. The valid cargo types are supplies, equipment, humanitarian_aid, fuel_cells, and medical. <highlight>Do NOT include UNKNOWN_TYPE</highlight> — that's the bad data we want the test to catch."
-    priority: normal
-
-  mart_doc_guide:
-    id: mart_doc_guide
-    character: R0-B3RT
-    message: "Tests are set up on staging. Now document the mart too. Open <highlight>_fct_trade_routes.yml</highlight> and add a description. Analysts look at marts more than staging models, so this one matters."
-    priority: normal
-
-  test_results:
-    id: test_results
-    character: R0-B3RT
-    message: "The accepted_values test caught that unknown cargo type. That shipment SHP-007 with 'unknown_type' is flagged. Interesting that it's also headed to Null Meridian with voss_flag set to 1. Starting to see a pattern with these flagged shipments."
+  source_staging_pattern:
+    id: source_staging_pattern
+    character: NAV
+    message: "Quick note on how dbt projects are usually set up. You generally want <highlight>one staging model for each source table</highlight>. So raw_shipments gets stg_shipments, raw_planets gets stg_planets. The staging layer is where all the cleaning happens, that way every model downstream is working with consistent, well-named columns. Nobody else has to worry about the raw data."
     priority: high
 
-  final_run_guide:
-    id: final_run_guide
-    character: R0-B3RT
-    message: "Tests are doing their job. Now run dbt to confirm the models still build cleanly."
+  staging_complete:
+    id: staging_complete
+    character: NAV
+    message: "Staging looks clean. Time to build the mart."
+    priority: high
+
+  mart_guide:
+    id: mart_guide
+    character: NAV
+    message: "Open <highlight>fct_trade_routes.sql</highlight>. This is a mart — where you combine staging models into something useful. Use <highlight>ref('stg_shipments')</highlight> and <highlight>ref('stg_planets')</highlight> to pull the data in. That's how dbt knows what depends on what. The comments in the file explain more."
     priority: normal
+
+  ref_importance:
+    id: ref_importance
+    character: NAV
+    message: "Reason we use ref() instead of writing the table name directly: ref() does two things. <highlight>It tells dbt this model depends on that model</highlight>, so dbt builds them in the right order. And if the underlying table ever moves or gets renamed, <highlight>ref() still resolves correctly</highlight>. Hardcoding table names is how you end up with stuff that breaks silently at 3am."
+    priority: normal
+
+  hardcode_warning:
+    id: hardcode_warning
+    character: NAV
+    message: "Heads up — direct table reference in there. Use ref() instead. If you hardcode the name and that table moves, this model just breaks with no warning. ref() handles all of that for you."
+    priority: high
+
+  join_guide:
+    id: join_guide
+    character: NAV
+    message: "Nice, both refs are wired up. Next step is joining the data. Each shipment has an <highlight>origin_planet_id</highlight> that maps to <highlight>planet_id</highlight> in stg_planets — join on that to pull in the origin planet name. Then for the route summary we need <highlight>count(*) as shipment_count</highlight> and <highlight>sum(cargo_mass_kg) as total_mass_kg</highlight> grouped by origin planet."
+    priority: normal
+
+  materialization_explain:
+    id: materialization_explain
+    character: NAV
+    message: "Config block set. <highlight>Quick deeper dive on materializations</highlight> while you're here. dbt's default is <highlight>view</highlight> — the model becomes a CREATE VIEW statement that re-runs the SELECT every time someone queries it. Cheap, no storage, always fresh. For staging models (light cleaning, queried only by downstream models) that's perfect. <highlight>Marts get queried directly by analysts and dashboards</highlight>, often dozens of times per minute — a view there means recomputing the joins on every query. <highlight>materialized='table'</highlight> writes the result to disk once per dbt run, then every analyst query just reads from cache. There's also <highlight>ephemeral</highlight> (the model gets inlined as a CTE wherever it's ref'd, never written) and <highlight>incremental</highlight> for huge tables that are too expensive to rebuild every run — the bonus arc has a dedicated level on incremental. For most projects, though: staging → view, marts → table."
+    priority: normal
+
+  first_success:
+    id: first_success
+    character: NAV
+    message: "Models compiled. Looking good."
+    priority: high
+
+  dag_explanation:
+    id: dag_explanation
+    character: NAV
+    message: "Check the output — dbt built your models <highlight>in dependency order</highlight> automatically. Sources first, then staging, then the mart. You didn't have to tell it that. It figured it out from your ref() calls. That's basically the whole point of dbt: <highlight>you define the relationships, it handles the build order</highlight>."
+    priority: normal
+
+  analyses_aside:
+    id: analyses_aside
+    character: NAV
+    message: "Quick aside on a folder we haven't touched yet. dbt has an <highlight>analyses/</highlight> folder for SQL files that compile (so you get ref() and source() resolution) but <highlight>don't materialize</highlight> as tables or views. Use it for ad-hoc analyst queries you want versioned alongside the project — Holt's quarterly business reviews, root-cause queries during an incident — without polluting the warehouse with one-off tables. Not needed for this level, just worth knowing it's there."
+    priority: low
 
   level_complete:
     id: level_complete
-    character: R0-B3RT
-    message: "Documentation and tests are in place. Anyone new to this project can now see what each model does, what columns mean, and what values are valid. That's the difference between a pipeline that works and one that's actually maintainable. Those VOSS-flagged shipments keep coming up though. Something's going on there."
+    character: NAV
+    message: "Staging and marts are live. Holt's got her first real table to look at. <highlight>That's the Models lesson.</highlight> Next we go back to sources and make them production-grade — freshness, schemas, the works."
     priority: high

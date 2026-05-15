@@ -66,6 +66,12 @@ def seed() -> DbtResult:
     return _run_dbt("seed")
 
 
+def deps() -> DbtResult:
+    """Install dbt packages declared in packages.yml. Requires internet —
+    packages are pulled from dbt Hub or git on first run."""
+    return _run_dbt("deps")
+
+
 def compile_project() -> DbtResult:
     return _run_dbt("compile")
 

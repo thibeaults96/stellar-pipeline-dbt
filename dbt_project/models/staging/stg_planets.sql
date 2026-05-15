@@ -1,9 +1,9 @@
 -- stg_planets.sql
--- Federation staging model: planetary registry
+-- Helios staging model: planetary registry
 
 with source as (
 
-    select * from {{ source('federation', 'raw_planets') }}
+    select * from {{ source('helios', 'raw_planets') }}
 
 ),
 

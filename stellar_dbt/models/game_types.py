@@ -189,6 +189,41 @@ class ManifestSnapshotRefs(BaseModel):
     target_model: str
 
 
+class GitStateCheck(BaseModel):
+    """Read a boolean field off GameState.git — committed, pr_opened, merged.
+    Used by the Deploy level to gate on the player's simulated git flow."""
+    type: Literal["git_state"] = "git_state"
+    key: str  # one of: staged, committed, pr_opened, ci_passing, merged
+
+
+class ScheduleStateCheck(BaseModel):
+    """Verify the player has configured a job schedule of a specific kind, or
+    has triggered at least N simulated scheduled runs."""
+    type: Literal["schedule_state"] = "schedule_state"
+    kind: str | None = None  # None means any kind matches; otherwise: manual / interval / cron / on_merge
+    min_runs: int = 0  # minimum scheduled-run count required to pass
+
+
+class EnvironmentStateCheck(BaseModel):
+    """Verify a field on the simulated production environment is set
+    (non-empty / non-zero). Used by the Set Up Production level."""
+    type: Literal["environment_state"] = "environment_state"
+    key: str  # one of: name, target_schema, threads, dbt_version
+
+
+class ScheduleCommandsCheck(BaseModel):
+    """Verify the player's scheduled command list contains specific dbt
+    sub-commands and/or has at least N commands total."""
+    type: Literal["schedule_commands"] = "schedule_commands"
+    required: list[str] = Field(default_factory=list)  # e.g. ['dbt build', 'dbt source freshness']
+    min_count: int = 0
+
+
+class ScheduleEnvironmentCheck(BaseModel):
+    """Verify the job is pointed at the named environment."""
+    type: Literal["schedule_environment"] = "schedule_environment"
+
+
 ObjectiveCheck = Union[
     HasColumnAlias, HasRefCall, FileContainsActiveSql, FileContains,
     NoHardcodedRefs, HasTest, HasFreshnessConfig,
@@ -198,6 +233,8 @@ ObjectiveCheck = Union[
     ManifestModelConfig, ManifestModelDescription, ManifestColumnDescription,
     ManifestColumnTest, ManifestModelDependsOnMacro, ManifestMacroDefined,
     ManifestSnapshotExists, ManifestSnapshotConfig, ManifestSnapshotRefs,
+    GitStateCheck, ScheduleStateCheck,
+    EnvironmentStateCheck, ScheduleCommandsCheck, ScheduleEnvironmentCheck,
 ]
 
 
@@ -261,6 +298,47 @@ class EarnedBadge(BaseModel):
     name: str
     level_id: int
 
+class GitState(BaseModel):
+    """Simulated git promotion state used by the Deploy level (L7).
+    Pure game state — we don't actually run git. Tracks the player's
+    progression through stage → commit → PR → merge."""
+    branch: str = "feature/deploy-pipeline"
+    staged: bool = False
+    committed: bool = False
+    commit_message: str = ""
+    pr_opened: bool = False
+    ci_passing: bool = False
+    merged: bool = False
+
+
+class EnvironmentState(BaseModel):
+    """Simulated production environment used by the Set Up Production level
+    (L8). Mirrors what a dbt platform deployment environment looks like:
+    name + git branch + target schema + threads + pinned dbt version. The
+    DuckDB target underneath is always the same — this is metadata the
+    player configures, which the Schedule level then points jobs at."""
+    name: str = ""
+    git_branch: str = ""
+    target_schema: str = ""
+    threads: int = 0
+    dbt_version: str = ""
+
+
+class ScheduleState(BaseModel):
+    """Simulated job state used by the Schedule level (L9).
+    kind is one of: '', 'manual', 'interval', 'cron', 'on_merge'.
+    commands is the ordered list of dbt commands the job runs (e.g.
+    ['dbt seed', 'dbt build', 'dbt source freshness']).
+    environment_name is the environment the job runs against — populated
+    from EnvironmentState in L8."""
+    kind: str = ""
+    expression: str = ""  # cron expression or interval ("6h") — meaning depends on kind
+    commands: list[str] = Field(default_factory=list)
+    environment_name: str = ""
+    run_count: int = 0
+    last_run_output: str = ""
+
+
 class GameState(BaseModel):
     current_level: int = 1
     total_xp: int = 0
@@ -271,3 +349,6 @@ class GameState(BaseModel):
     run_count: int = 0
     test_count: int = 0
     pending_narratives: list[dict] = Field(default_factory=list)
+    git: GitState = Field(default_factory=GitState)
+    environment: EnvironmentState = Field(default_factory=EnvironmentState)
+    schedule: ScheduleState = Field(default_factory=ScheduleState)
