@@ -273,6 +273,20 @@ class BadgeDefinition(BaseModel):
     xp: int
 
 
+# ─── Quiz ─────────────────────────────────────────────────────────────────────
+
+class QuizQuestion(BaseModel):
+    """A single multiple-choice quiz question shown between levels.
+
+    `correct` is the 0-based index into `options`. `explanation` is shown after
+    the player answers (right or wrong) so the quiz reinforces the concept
+    instead of just grading it."""
+    question: str
+    options: list[str]
+    correct: int
+    explanation: str = ""
+
+
 # ─── Level Config ─────────────────────────────────────────────────────────────
 
 class LevelConfig(BaseModel):
@@ -288,6 +302,7 @@ class LevelConfig(BaseModel):
     initial_files: dict[str, str] = Field(default_factory=dict)
     locked_files: list[str] = Field(default_factory=list)
     seed_files: dict[str, str] = Field(default_factory=dict)
+    quiz: list[QuizQuestion] = Field(default_factory=list)
 
 
 # ─── Game State (persisted to JSON) ──────────────────────────────────────────

@@ -186,41 +186,59 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Welcome to the bonus track. New problem: <highlight>Helios traffic is up 40%</highlight> since you shipped the pipeline last quarter. The full rebuild is taking long enough that the morning report is going out late. We need a model that only processes <highlight>new and updated rows</highlight>. That's what incremental models are for."
+    message: "Welcome to the bonus track. Here's the new headache: <highlight>Helios traffic is up 40%</highlight> since you shipped the pipeline last quarter. The full rebuild now takes so long the morning report goes out late. What we want is a model that only touches <highlight>new and updated rows</highlight>, and that's exactly the job incremental models do."
     priority: high
 
   incremental_guide:
     id: incremental_guide
     character: NAV
-    message: "Open <highlight>fct_shipment_log.sql</highlight>. The shape: a config block declaring it incremental and naming the unique_key, then a select from {{ ref('stg_shipments') }}, then a Jinja <highlight>{% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}</highlight> filter. First run loads everything. Every later run only picks up rows newer than what's already loaded. Start with the config block."
+    message: "Open <highlight>fct_shipment_log.sql</highlight>. Here's how it's put together: a config block that declares it incremental and names the unique_key, a select from {{ ref('stg_shipments') }}, and then a Jinja <highlight>{% if is_incremental() %} where updated_at > (select max(updated_at) from {{ this }}) {% endif %}</highlight> filter. The first run loads everything; every run after that only grabs rows newer than what's already there. Start with the config block."
     priority: normal
 
   first_run:
     id: first_run
     character: NAV
-    message: "Existing models ran fine. Now you need fct_shipment_log built as an incremental model. First run loads everything. Every run after that picks up only rows where updated_at is newer than the last processed timestamp."
+    message: "The existing models ran fine. Now build fct_shipment_log as an incremental model. The first run loads everything, and after that each run only picks up rows where updated_at is newer than the last one you processed."
     priority: normal
 
   config_done:
     id: config_done
     character: NAV
-    message: "Config set. <highlight>materialized='incremental'</highlight> tells dbt to skip the rebuild-from-scratch step. <highlight>unique_key='shipment_id'</highlight> means a row with an existing ID gets updated, not duplicated. Now ref() the staging model and build the query."
+    message: "Config's set. <highlight>materialized='incremental'</highlight> tells dbt to skip the rebuild-from-scratch step, and <highlight>unique_key='shipment_id'</highlight> means a row with an ID that already exists gets updated instead of duplicated. Now ref() the staging model and write the query."
     priority: normal
 
   ref_done:
     id: ref_done
     character: NAV
-    message: "Data source wired up. Now the key part: the <highlight>is_incremental()</highlight> filter. WHERE clause that only fires on incremental runs (skipped on the first full load). Pattern: use is_incremental() in a Jinja if block, filter updated_at greater than max(updated_at) in {{ this }}."
+    message: "Data source is wired up. Here's the part that matters: the <highlight>is_incremental()</highlight> filter. It's a WHERE clause that only fires on incremental runs and gets skipped on the first full load. Wrap is_incremental() in a Jinja if block and filter updated_at to anything greater than max(updated_at) in {{ this }}."
     priority: normal
 
   incremental_explain:
     id: incremental_explain
     character: NAV
-    message: "That's the pattern. <highlight>On first run, full load. On every run after that, just the delta.</highlight> This is how production warehouses handle large fact tables without rebuilding everything every refresh."
+    message: "And that's the whole idea. <highlight>First run is a full load; every run after that is just the delta.</highlight> It's how production warehouses keep large fact tables fresh without rebuilding the world on every refresh."
     priority: normal
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Refresh time dropped from 12 minutes to under 90 seconds. Holt's getting her morning report on time again. <highlight>That's incremental models.</highlight> One more bonus level: snapshots — for when you need to remember not just what the data is, but what it used to be."
+    message: "Refresh time went from 12 minutes to under 90 seconds, so Holt's getting her morning report on time again. <highlight>That's incremental models in a nutshell.</highlight> One more bonus level left: snapshots, for when you need to remember not just what the data is now but what it used to be."
     priority: high
+
+quiz:
+  - question: "When does `{% if is_incremental() %}` evaluate to true?"
+    options:
+      - "On every run after the very first one (when the table already exists)"
+      - "Only on the very first run"
+      - "Whenever you pass `--full-refresh`"
+      - "Only when running in production"
+    correct: 0
+    explanation: "On the first run the table doesn't exist yet, so dbt builds it from scratch and is_incremental() is false. After that it's true, and you use that branch to filter down to only the new rows."
+  - question: "What does `unique_key` do in an incremental model config?"
+    options:
+      - "Tells dbt which column identifies a row so it can update existing rows instead of duplicating them"
+      - "Marks the column as a primary key in the warehouse"
+      - "Generates a UUID for each row"
+      - "Adds a unique test automatically"
+    correct: 0
+    explanation: "Without `unique_key`, an incremental run only ever inserts. With it, dbt does a merge: existing rows matching that key get updated and new ones get inserted. That matters a lot for late-arriving data."

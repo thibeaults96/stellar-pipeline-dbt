@@ -208,83 +208,101 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Code's merged, environment is configured. <highlight>Now we define a job</highlight> — and \"job\" has a specific meaning here. It's three things bound together: a sequence of dbt commands, an environment to run them in, and a schedule that decides when. Take any one of those away and the platform won't accept it."
+    message: "Code's merged, environment is configured. <highlight>Now we define a job</highlight>, and \"job\" means something specific here. It's three things bound together: a sequence of dbt commands, an environment to run them in, and a schedule that decides when. Drop any one of those and the platform won't accept it."
     priority: high
 
   overview:
     id: overview
     character: NAV
-    message: "Open the <highlight>SCHEDULE tab</highlight> at the bottom — it's split into four sections now: <highlight>(1) Environment</highlight>, <highlight>(2) Commands</highlight>, <highlight>(3) When</highlight>, and the <highlight>Trigger</highlight> button. Work top to bottom. The trigger button stays disabled until all three are filled in — same gate the real platform applies."
+    message: "Open the <highlight>SCHEDULE tab</highlight> at the bottom. It's split into four sections now: <highlight>(1) Environment</highlight>, <highlight>(2) Commands</highlight>, <highlight>(3) When</highlight>, and the <highlight>Trigger</highlight> button. Work top to bottom. The trigger button stays disabled until all three are filled in, the same gate the real platform applies."
     priority: normal
 
   anatomy:
     id: anatomy
     character: NAV
-    message: "Quick anatomy of a typical production job:\n• <highlight>dbt build</highlight> — does the whole pipeline (seed + run + test + snapshot) in dependency order. 90% of jobs are just this.\n• <highlight>dbt source freshness</highlight> — checks how stale your source data is. Usually runs separately so a freshness warn/error doesn't block the build.\n• <highlight>dbt seed</highlight> — only needed when seed files change. Many teams run it once on deploy, not every job.\nYou can chain them. The job runs them top to bottom and stops on the first failure."
+    message: "Here's what a typical production job is made of:\n• <highlight>dbt build</highlight>: runs the whole pipeline (seed + run + test + snapshot) in dependency order. 90% of jobs are just this.\n• <highlight>dbt source freshness</highlight>: checks how stale your source data is. Usually runs separately so a freshness warn or error doesn't block the build.\n• <highlight>dbt seed</highlight>: only needed when seed files change. Plenty of teams run it once on deploy rather than every job.\nYou can chain them. The job runs them top to bottom and stops on the first failure."
     priority: normal
 
   env_done:
     id: env_done
     character: NAV
-    message: "Environment bound. The job now knows <highlight>where to run</highlight>: which warehouse, which schema, which dbt version, with which env vars. If you ever swap environments (e.g. point this job at staging for testing), you change one dropdown — not the whole job definition."
+    message: "Environment bound. The job now knows <highlight>where to run</highlight>: which warehouse, which schema, which dbt version, which env vars. If you ever swap environments (say, point this job at staging for testing), you change one dropdown rather than the whole job definition."
     priority: normal
 
   commands_done:
     id: commands_done
     character: NAV
-    message: "Command list looks right. <highlight>dbt build</highlight> handles the meat of the work, <highlight>dbt source freshness</highlight> runs as a separate step so a freshness warning doesn't block downstream models. The scheduler will run them top to bottom and stop on the first failure — a pattern called <highlight>fail-fast</highlight>."
+    message: "Command list looks right. <highlight>dbt build</highlight> handles the bulk of the work, and <highlight>dbt source freshness</highlight> runs as a separate step so a freshness warning doesn't block downstream models. The scheduler runs them top to bottom and stops on the first failure, a pattern called <highlight>fail-fast</highlight>."
     priority: normal
 
   select_guide:
     id: select_guide
     character: NAV
-    message: "Worth introducing one more pattern before we wrap commands: <highlight>node selection</highlight>. dbt's `--select` flag lets you target specific models, paths, or tags instead of running the whole project. The basic forms:\n• <highlight>--select model_name</highlight> — that one model\n• <highlight>--select model_name+</highlight> — that model and everything downstream\n• <highlight>--select +model_name</highlight> — that model and everything upstream\n• <highlight>--select tag:hourly</highlight> — every model tagged 'hourly'\n• <highlight>--select staging.+</highlight> — all staging models and their descendants\nAdd a third command line: `dbt run --select stg_shipments+`. Real-world use: rerunning a staging fix without rebuilding the whole pipeline."
+    message: "One more pattern before we wrap up commands: <highlight>node selection</highlight>. dbt's `--select` flag lets you target specific models, paths, or tags instead of running the whole project. The basic forms:\n• <highlight>--select model_name</highlight>: that one model\n• <highlight>--select model_name+</highlight>: that model and everything downstream\n• <highlight>--select +model_name</highlight>: that model and everything upstream\n• <highlight>--select tag:hourly</highlight>: every model tagged 'hourly'\n• <highlight>--select staging.+</highlight>: all staging models and their descendants\nAdd a third command line: `dbt run --select stg_shipments+`. You'd reach for this to rerun a staging fix without rebuilding the whole pipeline."
     priority: normal
 
   select_payoff:
     id: select_payoff
     character: NAV
-    message: "Selection wired in. <highlight>The reason this matters in production</highlight>: full builds at scale can take 20+ minutes. A staging-only refresh might take 90 seconds. Selection lets you wire up <highlight>tiered schedules</highlight> — hourly for fast-moving sources, daily for the full pipeline, ad-hoc for hotfixes. Same dbt, different windows."
+    message: "Selection wired in. <highlight>Here's why this matters in production.</highlight> Full builds at scale can take 20+ minutes, while a staging-only refresh might take 90 seconds. Selection lets you set up <highlight>tiered schedules</highlight>: hourly for fast-moving sources, daily for the full pipeline, ad-hoc for hotfixes. Same dbt, different windows."
     priority: normal
 
   kind_explain:
     id: kind_explain
     character: NAV
-    message: "Schedule kind set. Worth knowing what each one is best at:\n• <highlight>Manual</highlight> — fine for dev. Don't ship to prod.\n• <highlight>Interval</highlight> — easy. \"Every 6h\" stays simple. Drawback: doesn't care that 3am refreshes happen at 3am.\n• <highlight>Cron</highlight> — calendar-aware. Most production schedulers default to this because business cares about hours and days, not raw intervals.\n• <highlight>On-merge</highlight> — every PR merge triggers a build. Tight feedback loop for small projects; thrashing for big ones."
+    message: "Schedule kind set. Here's what each one is good for:\n• <highlight>Manual</highlight>: fine for dev. Don't ship it to prod.\n• <highlight>Interval</highlight>: easy. \"Every 6h\" stays simple. The catch is it doesn't care whether a 3am refresh actually lands at 3am.\n• <highlight>Cron</highlight>: calendar-aware. Most production schedulers default to this, because the business cares about hours and days, not raw intervals.\n• <highlight>On-merge</highlight>: every PR merge triggers a build. A tight feedback loop on small projects, and constant thrashing on big ones."
     priority: normal
 
   first_run:
     id: first_run
     character: NAV
-    message: "First scheduled run completed successfully. <highlight>The platform invoked your command list in order</highlight> — exactly what would happen at the configured cadence in real production. Notice the terminal shows each command separately so when something fails you know which step broke."
+    message: "First scheduled run completed successfully. <highlight>The platform invoked your command list in order</highlight>, exactly what would happen at the configured cadence in real production. Notice the terminal shows each command separately, so when something fails you know which step broke."
     priority: high
 
   run_failed:
     id: run_failed
     character: NAV
-    message: "Run failed — scroll the terminal to find which command broke. The job <highlight>stops on the first failure</highlight> rather than charging ahead, which keeps a bad upstream from corrupting downstream tables. Fix it and trigger again."
+    message: "Run failed. Scroll the terminal to find which command broke. The job <highlight>stops on the first failure</highlight> instead of charging ahead, which keeps a bad upstream from corrupting downstream tables. Fix it and trigger again."
     priority: high
 
   second_run:
     id: second_run
     character: NAV
-    message: "Two runs in. <highlight>That's the production loop.</highlight> The same job, on a cadence, forever. The scheduler invokes it; if a run fails, on-call gets paged; if a freshness check warns, downstream gets skipped. The pipeline lives in this loop until something breaks loud enough that someone notices."
+    message: "Two runs in, and <highlight>that's the production loop.</highlight> The same job, on a cadence, forever. The scheduler invokes it. If a run fails, on-call gets paged. If a freshness check warns, downstream gets skipped. The pipeline just lives in this loop until something breaks loud enough that someone notices."
     priority: normal
 
   holt_thanks:
     id: holt_thanks
     character: CDR. HOLT
-    message: "I just watched two cycles complete without anyone touching anything. <highlight>That's the thing I needed.</highlight> Before you came on, the only way the refresh happened was if someone remembered. Half the time it didn't."
+    message: "I just watched two cycles complete without anyone touching a thing. <highlight>That's exactly what I needed.</highlight> Before you came on, the refresh only happened if someone remembered to run it. Half the time nobody did."
     priority: normal
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Job's defined and triggering on schedule. <highlight>That's the whole shape of orchestration</highlight> — code in main, environment to run in, commands to run, cadence to run on. Helios is officially a self-driving warehouse."
+    message: "Job's defined and triggering on schedule. <highlight>That's the whole shape of orchestration</highlight>: code in main, an environment to run in, commands to run, a cadence to run on. Helios is officially a self-driving warehouse."
     priority: high
 
   next_steps:
     id: next_steps
     character: NAV
-    message: "<highlight>That wraps the core dbt Fundamentals arc.</highlight> Welcome → Setup → Models → Sources → Tests → Docs → Ship → Environment → Schedule. Four bonus levels are unlocked: <highlight>incremental models</highlight> for big tables, <highlight>snapshots</highlight> for tracking how data changes, <highlight>macros</highlight> for reusable Jinja, and <highlight>packages</highlight> for installing dbt_utils and parameterizing with vars. Or close the console and go build something."
+    message: "<highlight>And that wraps the core dbt Fundamentals arc.</highlight> Welcome → Setup → Models → Sources → Tests → Docs → Ship → Environment → Schedule. Four bonus levels just unlocked: <highlight>incremental models</highlight> for big tables, <highlight>snapshots</highlight> for tracking how data changes over time, <highlight>macros</highlight> for reusable Jinja, and <highlight>packages</highlight> for pulling in dbt_utils and parameterizing with vars. Or close the console and go build something real."
     priority: normal
+
+quiz:
+  - question: "What three things does a job combine?"
+    options:
+      - "Commands, an environment, and a schedule"
+      - "Models, tests, and seeds"
+      - "Sources, refs, and snapshots"
+      - "Jinja, YAML, and CSV"
+    correct: 0
+    explanation: "A job is what to run (commands like `dbt build`), where to run it (an environment), and when to run it (a schedule, whether manual, interval, cron, or on-merge)."
+  - question: "What does fail-fast behavior in a scheduled job mean?"
+    options:
+      - "If an earlier command fails, later commands in the job are skipped"
+      - "The job retries failed commands automatically"
+      - "Failed runs are deleted immediately"
+      - "The job sends a Slack alert within one second"
+    correct: 0
+    explanation: "If `dbt build` errors out, you don't want `dbt source freshness` running on a broken state. Fail-fast stops the sequence so the failure stays loud and the later commands don't paper over it."

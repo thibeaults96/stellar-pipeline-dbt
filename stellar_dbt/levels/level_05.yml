@@ -233,65 +233,91 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "The pipeline builds. Holt thinks it works. But <highlight>nothing's been validated</highlight>. The dock crew typed some of this data by hand. A new shift took over yesterday and used a cargo type that doesn't officially exist. One vessel logged an origin port that isn't in the registry. This is the test layer — where we make dbt fail loudly when the data is wrong."
+    message: "The pipeline builds. Holt thinks it works. Trouble is, <highlight>nothing's been validated</highlight>. A lot of this data got typed in by hand. A new shift took over yesterday and used a cargo type that doesn't officially exist, and one vessel logged an origin port that isn't even in the registry. So this is the test layer, where we get dbt to fail loudly the moment the data is wrong."
     priority: high
 
   matsuri_warning:
     id: matsuri_warning
     character: DR. MATSURI
-    message: "Two things you should know before you write tests. <highlight>shipment_id is supposed to be unique and never null</highlight> — it's the dock crew's manifest number. <highlight>cargo_type</highlight> has a fixed list of values from the Helios cargo catalog; anything else is a typo. And every origin port should map to a planet in the registry. If any of those rules don't hold, we've got a quality issue."
+    message: "A few things to keep in mind before you start writing tests. <highlight>shipment_id is supposed to be unique and never null</highlight>, since it's the dock crew's manifest number. <highlight>cargo_type</highlight> only ever comes from the fixed list in the Helios cargo catalog, so anything else is a typo. And every origin port should map to a real planet in the registry. Break any of those rules and we've got a quality problem."
     priority: normal
 
   data_problem:
     id: data_problem
     character: NAV
-    message: "Pipeline built fine. Now click <highlight>raw_shipments</highlight> in the data preview. <highlight>One row has no shipment_id. Two rows share SHP-002. Cargo type 'UNKNOWN_TYPE' shows up where it shouldn't. And origin 'ZZZ' doesn't match any planet.</highlight> Without tests, all four problems just flow downstream invisibly. Time to write the four classic generic tests."
+    message: "Pipeline built fine. Now click <highlight>raw_shipments</highlight> in the data preview and look closely. <highlight>One row has no shipment_id. Two rows share SHP-002. Cargo type 'UNKNOWN_TYPE' shows up where it shouldn't. And origin 'ZZZ' doesn't match any planet.</highlight> With no tests in place, all four of those just slide downstream where nobody sees them. Let's write the four classic generic tests."
     priority: high
 
   identity_tests_done:
     id: identity_tests_done
     character: NAV
-    message: "not_null and unique are in. <highlight>Together they make a primary key contract.</highlight> Any row that breaks either one means the source data is malformed, and dbt will scream about it on the next test run. Now let's add the bounded-set check."
+    message: "not_null and unique are in. <highlight>Put together, those two are a primary key contract.</highlight> Any row that breaks either one means the source data is malformed, and dbt will scream about it on the next test run. Next let's add the bounded-set check."
     priority: normal
 
   accepted_done:
     id: accepted_done
     character: NAV
-    message: "Good. <highlight>accepted_values</highlight> is the test you reach for when a column should only ever be one of a known set. Status fields, cargo types, country codes. The forbidden_values UNKNOWN_TYPE row will fail on the next dbt test — exactly the behavior we want. One more test: relationships."
+    message: "Good. <highlight>accepted_values</highlight> is the one you reach for when a column should only ever hold a value from a known set, like status fields, cargo types, or country codes. That UNKNOWN_TYPE row will fail on the next dbt test, which is exactly what we want. One test left, and that's relationships."
     priority: normal
 
   relationships_done:
     id: relationships_done
     character: NAV
-    message: "<highlight>relationships</highlight> is dbt's referential integrity test — it checks every value in origin_planet_id actually exists in stg_planets.planet_id. SHP-006's ZZZ won't match anything in the planet registry. That's a foreign key violation the test will catch."
+    message: "<highlight>relationships</highlight> is dbt's referential integrity test. It checks that every value in origin_planet_id actually exists over in stg_planets.planet_id. SHP-006's ZZZ matches nothing in the planet registry, so that's a foreign key violation, and this test will catch it."
     priority: normal
 
   singular_guide:
     id: singular_guide
     character: NAV
-    message: "Four generic tests handle the common shapes — uniqueness, nullability, allowed values, foreign keys. But <highlight>some rules are specific to your domain</highlight>. Example: a shipment that goes from MRD-9 → MRD-9 is nonsense — origin shouldn't equal destination. No generic test catches that. <highlight>Singular tests</highlight> are the answer: a `.sql` file in `tests/` whose SELECT returns the bad rows. dbt picks up everything in tests/ automatically — no YAML registration. Write one for the self-routing case."
+    message: "The four generic tests cover the common shapes: uniqueness, nullability, allowed values, foreign keys. But <highlight>some rules are specific to your domain</highlight>. Take a shipment that routes from MRD-9 to MRD-9. Origin equalling destination is nonsense, and no generic test will catch it. That's what <highlight>singular tests</highlight> are for: a `.sql` file in `tests/` whose SELECT returns the bad rows. dbt picks up everything in tests/ on its own, so there's no YAML registration to do. Write one for the self-routing case."
     priority: normal
 
   singular_done:
     id: singular_done
     character: NAV
-    message: "Singular test written. <highlight>The shape of a singular test</highlight>: SELECT that returns rows iff the rule is violated. Zero rows = passing, anything else = failing. The file name (`no_self_routing`) becomes the test name in dbt's output. Now click <highlight>dbt test</highlight> and watch the full battery run — four generic plus your singular."
+    message: "Singular test written. Here's <highlight>the shape of a singular test</highlight>: a SELECT that returns rows only when the rule is violated. Zero rows means it passes, anything else means it fails. The file name, `no_self_routing`, becomes the test name in dbt's output. Go click <highlight>dbt test</highlight> and watch the whole battery run, four generic plus your singular."
     priority: normal
 
   test_results:
     id: test_results
     character: NAV
-    message: "There it is. <highlight>Five failing tests, five real data quality issues</highlight>. The models still built — dbt didn't pretend the data was clean — but now anyone reading the test output knows exactly what's broken. <highlight>You didn't fix the data, that's the source team's problem. What you did is make the breakage impossible to miss.</highlight>"
+    message: "There it is. <highlight>Five failing tests, five real data quality issues</highlight>. The models still built, since dbt never pretended the data was clean, but now anyone reading the test output can see exactly what's broken. <highlight>You didn't fix the data, that's the source team's job. What you did was make the breakage impossible to miss.</highlight>"
     priority: high
 
   build_tip:
     id: build_tip
     character: NAV
-    message: "Quick tip — you've been running <highlight>dbt run</highlight> and <highlight>dbt test</highlight> separately. There's a command called <highlight>dbt build</highlight> that does both in one shot, in dependency order: seeds, models, tests, snapshots. From now on you can use that instead."
+    message: "One thing worth showing you: so far you've been running <highlight>dbt run</highlight> and <highlight>dbt test</highlight> as two steps. There's a single command, <highlight>dbt build</highlight>, that does both in dependency order, seeds then models then tests then snapshots. Feel free to use that from here on."
     priority: normal
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Tests are wired up. Bad rows now fail loudly. <highlight>That's the Data Tests lesson.</highlight> Next: documentation — because the test that catches a bad row is twice as useful when the column's description tells you what the row should look like."
+    message: "Tests are wired up and bad rows fail loudly now. That covers <highlight>data tests</highlight>. Up next is documentation, and the two go hand in hand: a test that catches a bad row is twice as useful when the column's description tells you what the row was supposed to look like."
     priority: high
+
+quiz:
+  - question: "Which of these is NOT one of dbt's four built-in generic tests?"
+    options:
+      - "not_null"
+      - "unique"
+      - "accepted_values"
+      - "no_duplicates"
+    correct: 3
+    explanation: "The four generic tests are not_null, unique, accepted_values, and relationships. There's no built-in `no_duplicates`, because `unique` already covers it."
+  - question: "What's the difference between a generic test and a singular test?"
+    options:
+      - "Generic tests are parameterized and reusable across models; singular tests are one-off SQL files that test a specific business rule"
+      - "Generic tests are for columns, singular tests are for whole models"
+      - "Generic tests run in production, singular tests run in development"
+      - "There's no difference; they're aliases"
+    correct: 0
+    explanation: "Generic tests are macros you reuse, like `unique` on any column. A singular test is just a .sql file under tests/, and it fails if its SELECT returns any rows."
+  - question: "A singular test SQL file passes when its SELECT returns…"
+    options:
+      - "Zero rows"
+      - "At least one row"
+      - "Exactly one row"
+      - "More than the previous run"
+    correct: 0
+    explanation: "It feels backwards at first, but it's powerful. You write a query that returns the violations, so zero rows means no violations, which means the test passes."

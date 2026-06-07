@@ -262,53 +262,71 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Final bonus level. <highlight>Two patterns that show up in every real dbt project</highlight>: importing external packages and using project-level variables. Both live in YAML at the project root. Both keep you from hardcoding things in fifteen places."
+    message: "Final bonus level. <highlight>There are two patterns you'll find in pretty much every real dbt project</highlight>: importing external packages and using project-level variables. Both live in YAML at the project root, and both save you from hardcoding the same thing in fifteen places."
     priority: high
 
   holt_request:
     id: holt_request
     character: CDR. HOLT
-    message: "Quick ask from the ops side — I need a <highlight>deduplicated key</highlight> on every shipment for cross-system tracking. Same shipment, same key, every time. And I want the high-mass cutoff (currently 1000kg) tunable without an engineer editing model code every quarter."
+    message: "Couple of things from the ops side. I need a <highlight>deduplicated key</highlight> on every shipment for cross-system tracking. Same shipment, same key, every single time. And I want the high-mass cutoff, currently 1000kg, tunable without an engineer having to edit model code every quarter."
     priority: normal
 
   packages_guide:
     id: packages_guide
     character: NAV
-    message: "Two new files this level: <highlight>packages.yml</highlight> at the root declares external dbt packages, and <highlight>dbt_project.yml</highlight> gets a `vars:` block we'll add. The workhorse package is <highlight>dbt_utils</highlight> — it ships dozens of cross-warehouse helpers (surrogate keys, dedup, pivots, date series). Open packages.yml first."
+    message: "Two new files in play this level. <highlight>packages.yml</highlight> at the root declares external dbt packages, and <highlight>dbt_project.yml</highlight> gets a `vars:` block we'll add. The package you'll lean on is <highlight>dbt_utils</highlight>, which ships dozens of cross-warehouse helpers (surrogate keys, dedup, pivots, date series). Start with packages.yml."
     priority: normal
 
   declared:
     id: declared
     character: NAV
-    message: "Package declared. Nothing actually downloads until you run <highlight>dbt deps</highlight> — that's the command that reads packages.yml and pulls each package into <highlight>dbt_packages/</highlight>. There's a new `dbt deps` button in the toolbar for this level only."
+    message: "Package declared. Nothing actually downloads yet, though. That happens when you run <highlight>dbt deps</highlight>, the command that reads packages.yml and pulls each package into <highlight>dbt_packages/</highlight>. There's a `dbt deps` button in the toolbar for this level only."
     priority: normal
 
   installed:
     id: installed
     character: NAV
-    message: "dbt_utils is installed. <highlight>Every macro it ships is now usable from your models</highlight> as `{{ dbt_utils.<macro_name>(...) }}`. The `dbt_packages/` folder is gitignored by convention — packages.yml is the source of truth, deps gets re-run on every CI build."
+    message: "dbt_utils is installed. <highlight>Every macro it ships is now callable from your models</highlight> as `{{ dbt_utils.<macro_name>(...) }}`. By convention the `dbt_packages/` folder is gitignored: packages.yml is the source of truth, and deps gets re-run on every CI build."
     priority: normal
 
   var_explain:
     id: var_explain
     character: NAV
-    message: "Variable set. <highlight>Quick on what vars are good for</highlight>: thresholds, region tags, feature flags, sometimes connection-shape config that varies between dev and prod. Read them with `{{ var('name') }}` in any model. Override them from the CLI with `dbt run --vars '{name: value}'` for one-off runs. Now wire `min_priority_mass` into the new mart."
+    message: "Variable set. <highlight>What are vars actually good for?</highlight> Thresholds, region tags, feature flags, sometimes connection-shape config that differs between dev and prod. Read them with `{{ var('name') }}` in any model, and override them from the CLI with `dbt run --vars '{name: value}'` for one-off runs. Now wire `min_priority_mass` into the new mart."
     priority: normal
 
   macro_payoff:
     id: macro_payoff
     character: NAV
-    message: "<highlight>generate_surrogate_key is wired up.</highlight> Behind the scenes it expands into an MD5 of the column list, formatted correctly for whichever warehouse you're on — DuckDB, Snowflake, BigQuery, Postgres, all different. Without dbt_utils, every team writes that helper themselves. With it: one line. That's the whole pitch for packages."
+    message: "<highlight>generate_surrogate_key is wired up.</highlight> Under the hood it expands into an MD5 of the column list, formatted right for whatever warehouse you're on, and DuckDB, Snowflake, BigQuery, and Postgres all do it a little differently. Without dbt_utils, every team ends up writing that helper themselves. With it, you get one line. That's really the case for packages in a nutshell."
     priority: high
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Packages installed, variable parameterized, dbt_utils macro doing real work. <highlight>That's the package ecosystem</highlight> — you basically never start a real dbt project without it."
+    message: "Packages installed, variable parameterized, dbt_utils macro doing real work. <highlight>That's the package ecosystem</highlight>, and honestly you almost never kick off a real dbt project without reaching for it."
     priority: high
 
   finale:
     id: finale
     character: NAV
-    message: "<highlight>And that wraps the whole arc</highlight> — every bonus level cleared. Nine core lessons plus four bonus: incremental, snapshots, macros, packages. You can build, ship, schedule, and extend dbt projects now. <highlight>Go do it for real.</highlight>"
+    message: "<highlight>And that's the whole arc</highlight>, every bonus level cleared. Nine core lessons plus four bonus ones: incremental, snapshots, macros, packages. You can build, ship, schedule, and extend dbt projects now. <highlight>Go do it for real.</highlight>"
     priority: normal
+
+quiz:
+  - question: "What command installs the packages declared in `packages.yml`?"
+    options:
+      - "dbt deps"
+      - "dbt install"
+      - "dbt packages"
+      - "dbt pull"
+    correct: 0
+    explanation: "`dbt deps` reads packages.yml and clones each package under dbt_packages/. Run it again any time you change the file or bump to a new version."
+  - question: "What's the typical use case for a project variable defined in `vars:`?"
+    options:
+      - "Holding a value (like a threshold or a date) you want to set in one place and reference from many models"
+      - "Defining a new SQL data type"
+      - "Storing secrets like API keys"
+      - "Naming your dbt project"
+    correct: 0
+    explanation: "Vars centralize the knobs: a minimum threshold, a date cutoff, a feature flag. Reference them with `{{ var('name') }}` and override per-environment from the CLI or job config. They're not the place for secrets, though; those belong in env vars or profiles."

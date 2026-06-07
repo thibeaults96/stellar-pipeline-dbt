@@ -219,53 +219,71 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Last bonus level. Quick story: Holt wants the priority rules — which cargo gets routed through Helios first when capacity is tight — visible in the analyst tables. Easy enough to add a CASE WHEN to fct_trade_routes. But the same rules will show up in three other marts by end of quarter, and now you've got the same SQL copy-pasted in four files. This level is about <highlight>macros</highlight> — reusable Jinja functions that let you write the logic once and call it everywhere."
+    message: "Another bonus level. So here's the situation: Holt wants the priority rules (which cargo gets routed through Helios first when capacity is tight) showing up in the analyst tables. You could just drop a CASE WHEN into fct_trade_routes. But those same rules are going to land in three other marts by end of quarter, and suddenly you've got the same SQL copy-pasted across four files. This level is about <highlight>macros</highlight>, the reusable Jinja functions that let you write the logic once and call it everywhere."
     priority: high
 
   matsuri_briefing:
     id: matsuri_briefing
     character: DR. MATSURI
-    message: "Quick on the priority rules so you can encode them: <highlight>medical cargo is critical</highlight> — life support, drugs, anything that times out. <highlight>Fuel cells and humanitarian aid are high</highlight> — large operational impact if delayed. <highlight>Everything else is standard</highlight>. The rules will probably get more nuanced over the next year — that's the case for centralizing them in one place now."
+    message: "Here are the priority rules so you can encode them. <highlight>Medical cargo is critical</highlight>: life support, drugs, anything that times out. <highlight>Fuel cells and humanitarian aid are high</highlight>, since a delay there has a big operational impact. <highlight>Everything else is standard</highlight>. These rules will almost certainly get more nuanced over the next year, which is exactly why it's worth centralizing them in one place now."
     priority: normal
 
   macro_guide:
     id: macro_guide
     character: NAV
-    message: "Open <highlight>macros/cargo_priority.sql</highlight>. Macro syntax: <highlight>{% macro name(arg) %}</highlight> ... SQL with `{{ arg }}` placeholders ... <highlight>{% endmacro %}</highlight>. The `{% %}` delimiters wrap control statements; the `{{ }}` ones substitute values. When you call the macro from a model with `{{ cargo_priority('cargo_type') }}`, dbt renders the body with `column_name` replaced by `cargo_type` at compile time. The model sees ordinary SQL by the time it hits the warehouse."
+    message: "Open <highlight>macros/cargo_priority.sql</highlight>. The macro syntax goes <highlight>{% macro name(arg) %}</highlight> ... SQL with `{{ arg }}` placeholders ... <highlight>{% endmacro %}</highlight>. The `{% %}` delimiters wrap control statements and the `{{ }}` ones drop in values. When you call the macro from a model with `{{ cargo_priority('cargo_type') }}`, dbt renders the body at compile time with `column_name` swapped out for `cargo_type`. By the time it hits the warehouse, the model is just plain SQL."
     priority: normal
 
   first_run_note:
     id: first_run_note
     character: NAV
-    message: "Models built. Open the data preview for <highlight>fct_trade_routes</highlight> — that's what your new mart will read from. cargo_type is the column the macro inspects. The macro doesn't actually transform the data; it builds a CASE WHEN expression dbt inlines wherever you call it."
+    message: "Models built. Open the data preview for <highlight>fct_trade_routes</highlight>, since that's what your new mart reads from. cargo_type is the column the macro looks at. Keep in mind the macro doesn't transform the data itself; it just builds a CASE WHEN expression that dbt inlines wherever you call it."
     priority: normal
 
   macro_defined:
     id: macro_defined
     character: NAV
-    message: "Macro registered with dbt. <highlight>Important detail</highlight>: the macro is just a Jinja function — it doesn't run anything on its own, and it doesn't appear as a model in the DAG. It only does work when a model calls it. Next step: build fct_priority_routes and have it use the macro."
+    message: "Macro's registered with dbt. <highlight>One thing worth keeping straight</highlight>: the macro is just a Jinja function. It doesn't run anything on its own and it doesn't show up as a model in the DAG. It only does work when a model calls it. Next up, build fct_priority_routes and have it use the macro."
     priority: normal
 
   call_guide:
     id: call_guide
     character: NAV
-    message: "ref() is wired. Now call the macro: <highlight>{{ cargo_priority('cargo_type') }} as priority</highlight>. The single-quoted `cargo_type` is the column name dbt will substitute into the macro body — it's a string, not a SQL identifier, until the macro renders it inside the CASE."
+    message: "ref() is wired. Now call the macro: <highlight>{{ cargo_priority('cargo_type') }} as priority</highlight>. That single-quoted `cargo_type` is the column name dbt substitutes into the macro body. It stays a plain string, not a SQL identifier, right up until the macro renders it inside the CASE."
     priority: normal
 
   reuse_payoff:
     id: reuse_payoff
     character: NAV
-    message: "Macro is wired up. Here's the payoff: <highlight>if Holt comes back tomorrow and says \"actually, fuel_cells should be critical too\"</highlight>, you edit one file in macros/ and every model that calls cargo_priority gets the new rule automatically. <highlight>That's the DRY principle</highlight> — Don't Repeat Yourself. Macros are how dbt projects scale to hundreds of models without the maintenance load growing linearly."
+    message: "Macro is wired up, and here's where it pays off. <highlight>Say Holt comes back tomorrow and says \"actually, fuel_cells should be critical too\"</highlight>. You edit one file in macros/ and every model that calls cargo_priority picks up the new rule on its own. <highlight>That's the DRY principle</highlight>, short for Don't Repeat Yourself. It's how dbt projects grow to hundreds of models without the maintenance load piling up just as fast."
     priority: high
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Priority pipeline is live, fed by a macro that other marts can reuse. <highlight>That's macros.</highlight>"
+    message: "Priority pipeline is live, fed by a macro that the other marts can reuse. <highlight>That's macros sorted.</highlight>"
     priority: high
 
   finale:
     id: finale
     character: NAV
-    message: "Three bonus levels down. One left: <highlight>packages</highlight> — installing external dbt code (dbt_utils most commonly) and parameterizing your project with vars. The most-used pattern in real production projects after the Fundamentals themselves."
+    message: "Three bonus levels down, one to go: <highlight>packages</highlight>. This is about pulling in external dbt code (dbt_utils most of the time) and parameterizing your project with vars. After the Fundamentals themselves, it's probably the pattern you'll see most in real production projects."
     priority: normal
+
+quiz:
+  - question: "What's the main reason to write a macro?"
+    options:
+      - "To avoid repeating the same SQL or Jinja logic across multiple models"
+      - "Macros run faster than regular SQL"
+      - "Macros are required for any model with a CASE statement"
+      - "Macros are the only place you can write SELECT"
+    correct: 0
+    explanation: "It comes down to DRY. Centralize categorization logic, surrogate-key generation, or any reusable snippet, and a change happens in exactly one place. Every caller picks it up on the next compile."
+  - question: "How do you call a macro named `cargo_priority` from a model?"
+    options:
+      - "{{ cargo_priority(...) }}"
+      - "{% cargo_priority(...) %}"
+      - "@cargo_priority(...)"
+      - "CALL cargo_priority(...)"
+    correct: 0
+    explanation: "Macros are Jinja expressions, so you call them with `{{ }}`. The `{% %}` syntax is for statements like set, if, for, and the macro definition itself."

@@ -185,53 +185,71 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Last bonus level. Shipment statuses keep changing — <highlight>IN_TRANSIT becomes DELIVERED, sometimes back to IN_TRANSIT</highlight> when a vessel gets diverted. Our models always show the latest state. When something changes, the old data is gone. <highlight>We need a way to track how data changes over time.</highlight> That's what dbt snapshots do."
+    message: "Another bonus level. Shipment statuses keep shifting around: <highlight>IN_TRANSIT becomes DELIVERED, and sometimes flips back to IN_TRANSIT</highlight> when a vessel gets diverted. Our models only ever show the latest state, so the moment something changes the old value is gone. <highlight>What we're missing is a way to track how the data changes over time</highlight>, and that's the job dbt snapshots do."
     priority: high
 
   snapshot_guide:
     id: snapshot_guide
     character: NAV
-    message: "Open <highlight>snapshots/shipment_snapshots.yml</highlight>. In modern dbt, snapshots are defined in YAML, not SQL. You set a name, point it at a model with <highlight>relation:</highlight>, and configure how dbt detects changes. The comments in the file walk through the structure."
+    message: "Open <highlight>snapshots/shipment_snapshots.yml</highlight>. These days snapshots are defined in YAML rather than SQL. You give it a name, point it at a model with <highlight>relation:</highlight>, and tell dbt how to spot changes. The comments in the file walk you through the structure."
     priority: normal
 
   first_run:
     id: first_run
     character: NAV
-    message: "Models ran fine. Now set up the snapshot definition. You need to tell dbt what to call it, which model to track, and how to detect changes."
+    message: "Models ran fine. Now let's set up the snapshot definition. You'll need to tell dbt what to call it, which model to track, and how to spot changes."
     priority: normal
 
   name_done:
     id: name_done
     character: NAV
-    message: "Snapshot named. Now add <highlight>relation: ref('stg_shipments')</highlight> so dbt knows which model to snapshot. Same ref() syntax as models — same dependency tracking, same DAG node, just for snapshots."
+    message: "Snapshot named. Now add <highlight>relation: ref('stg_shipments')</highlight> so dbt knows which model to snapshot. It's the same ref() syntax you use in models, with the same dependency tracking and the same DAG node, just pointed at a snapshot instead."
     priority: normal
 
   relation_done:
     id: relation_done
     character: NAV
-    message: "Relation set. Now the config block. Three keys: <highlight>strategy: timestamp</highlight> (dbt compares timestamps to detect changes), <highlight>unique_key: shipment_id</highlight> (identifies each logical row), and <highlight>updated_at: updated_at</highlight> (the column dbt watches)."
+    message: "Relation set. On to the config block, which has three keys: <highlight>strategy: timestamp</highlight> (dbt compares timestamps to find changes), <highlight>unique_key: shipment_id</highlight> (what identifies each logical row), and <highlight>updated_at: updated_at</highlight> (the column dbt keeps an eye on)."
     priority: normal
 
   config_done:
     id: config_done
     character: NAV
-    message: "Config looks good. Click <highlight>dbt snapshot</highlight> to run it. First run captures the current state of every row. If the data changes later and you re-run, dbt creates new versions of the changed rows and stamps the old ones with dbt_valid_to."
+    message: "Config looks good. Hit <highlight>dbt snapshot</highlight> to run it. The first run captures the current state of every row. If the data changes later and you run it again, dbt writes new versions of the changed rows and stamps the old ones with dbt_valid_to."
     priority: normal
 
   snapshot_ran:
     id: snapshot_ran
     character: NAV
-    message: "Snapshot ran. Open the PREVIEW tab and check <highlight>shipment_status_snapshot</highlight>. dbt added three columns automatically: <highlight>dbt_valid_from</highlight> (when this version started), <highlight>dbt_valid_to</highlight> (NULL for current rows), and <highlight>dbt_scd_id</highlight>. Slowly-changing dimension type 2, basically."
+    message: "Snapshot ran. Open the PREVIEW tab and take a look at <highlight>shipment_status_snapshot</highlight>. dbt tacked on three columns for you: <highlight>dbt_valid_from</highlight> (when this version started), <highlight>dbt_valid_to</highlight> (NULL for current rows), and <highlight>dbt_scd_id</highlight>. This is a slowly-changing dimension, type 2, under the hood."
     priority: normal
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Snapshots are running. The warehouse now has a complete audit trail of every shipment change. <highlight>Old data doesn't disappear anymore — it gets archived in place.</highlight>"
+    message: "Snapshots are running. The warehouse now keeps a full audit trail of every shipment change. <highlight>Old data doesn't just vanish anymore; it gets archived right where it was.</highlight>"
     priority: high
 
   finale:
     id: finale
     character: NAV
-    message: "Two bonus levels down. One left: <highlight>macros</highlight> — reusable Jinja functions that let you write a piece of SQL logic once and call it from every model that needs it. Worth the extra few minutes."
+    message: "Two bonus levels down, one to go: <highlight>macros</highlight>. They're reusable Jinja functions that let you write a piece of SQL logic once and call it from every model that needs it. Stick around for it, it's a quick one."
     priority: normal
+
+quiz:
+  - question: "What problem do dbt snapshots solve?"
+    options:
+      - "Tracking how a row's values change over time (slowly changing dimensions)"
+      - "Speeding up large model builds"
+      - "Backing up your dbt project to S3"
+      - "Compressing seed CSVs"
+    correct: 0
+    explanation: "Snapshots are dbt's SCD Type 2 mechanism. They watch the source for changes and write out a versioned history, which is handy when the upstream system overwrites rows in place."
+  - question: "Which column does dbt auto-add to a snapshot to mark when a row's version stopped being current?"
+    options:
+      - "dbt_valid_to"
+      - "dbt_invalidated_at"
+      - "dbt_deleted_at"
+      - "dbt_end"
+    correct: 0
+    explanation: "Every snapshot gets dbt_valid_from, dbt_valid_to, and dbt_scd_id. A NULL valid_to means the row is the current version; a timestamp means a newer version has taken over."

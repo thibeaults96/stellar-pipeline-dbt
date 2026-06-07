@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, type GameStatus, type ActionReport, type FileEntry, type SourceEntry, type SourcePreview, type NarrativeEvent, type Objective } from '@/hooks/useGameApi'
+import { api, type GameStatus, type ActionReport, type FileEntry, type SourceEntry, type SourcePreview, type NarrativeEvent, type Objective, type Quiz } from '@/hooks/useGameApi'
 import StatusBar from './StatusBar'
 import FileTree from './FileTree'
 import CodeEditor from './CodeEditor'
@@ -10,6 +10,7 @@ import ObjectivePanel from './ObjectivePanel'
 import NarrativePanel from './NarrativePanel'
 import NarrativeToast, { type ToastEntry } from './NarrativeToast'
 import LevelComplete from './LevelComplete'
+import QuizModal from './QuizModal'
 import BottomPane from './BottomPane'
 
 export default function GameShell() {
@@ -35,6 +36,11 @@ export default function GameShell() {
   const [bottomTab, setBottomTab] = useState<import('./BottomPane').Tab>('dag')
   const [toasts, setToasts] = useState<ToastEntry[]>([])
   const toastKeyRef = useRef(0)
+  // Quiz shown between levels — populated when the player clicks Next Mission
+  // on LevelComplete. `pendingNextLevel` is the level we'll load once the
+  // player clicks Continue on the quiz.
+  const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null)
+  const [pendingNextLevel, setPendingNextLevel] = useState<number | null>(null)
 
   const pushToasts = useCallback((events: NarrativeEvent[]) => {
     if (!events.length) return
@@ -62,6 +68,8 @@ export default function GameShell() {
     setFileLocked(false)
     setLevelComplete(null)
     setPendingLevelComplete(null)
+    setActiveQuiz(null)
+    setPendingNextLevel(null)
     // Deploy / Environment / Schedule levels surface their dedicated tab on
     // entry so the player doesn't have to discover the UI affordance.
     if (levelId === 7) setBottomTab('deploy')
@@ -240,6 +248,31 @@ export default function GameShell() {
     await loadLevel(currentLevel)
   }, [status, loadLevel])
 
+  // When the player clicks Next Mission on LevelComplete: dismiss the modal,
+  // fetch the just-finished level's quiz, and either show it (if there are
+  // questions) or skip straight to loading the next level.
+  const handleAdvanceLevel = useCallback(async (finishedLevelId: number, nextLevelId: number) => {
+    setLevelComplete(null)
+    try {
+      const quiz = await api.getQuiz(finishedLevelId)
+      if (quiz.questions.length > 0) {
+        setActiveQuiz(quiz)
+        setPendingNextLevel(nextLevelId)
+        return
+      }
+    } catch {
+      // Quiz fetch failure shouldn't block progression — fall through to load.
+    }
+    await loadLevel(nextLevelId)
+  }, [loadLevel])
+
+  const dismissQuizAndAdvance = useCallback(async () => {
+    const next = pendingNextLevel
+    setActiveQuiz(null)
+    setPendingNextLevel(null)
+    if (next !== null) await loadLevel(next)
+  }, [pendingNextLevel, loadLevel])
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); handleRun() }
@@ -358,6 +391,14 @@ export default function GameShell() {
 
       <NarrativeToast toasts={toasts} onDismiss={dismissToast} />
 
+      {activeQuiz && (
+        <QuizModal
+          quiz={activeQuiz}
+          onContinue={dismissQuizAndAdvance}
+          onSkip={dismissQuizAndAdvance}
+        />
+      )}
+
       {levelComplete && status && (() => {
         const id = status.level.id
         const TOTAL_LEVELS = 13
@@ -368,7 +409,7 @@ export default function GameShell() {
         const isCoreFinale = id === 9
         const isFinal = id === TOTAL_LEVELS
         const onNext = (!isFinal && id < TOTAL_LEVELS)
-          ? () => { setLevelComplete(null); loadLevel(id + 1) }
+          ? () => handleAdvanceLevel(id, id + 1)
           : undefined
         const nextLabel = isCoreFinale ? 'Start bonus arc ▶' : undefined
         return (

@@ -168,59 +168,77 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Code's merged. <highlight>But code by itself doesn't run.</highlight> The platform needs a place to run it — a configured target tied to a specific git branch, with its own schema, parallelism settings, and pinned dbt version. That's an <highlight>environment</highlight>. We're going to set one up for production before we wire up the schedule."
+    message: "Code's merged. <highlight>But code by itself doesn't run.</highlight> The platform needs a place to run it: a configured target tied to a specific git branch, with its own schema, parallelism settings, and pinned dbt version. That's an <highlight>environment</highlight>. Let's stand one up for production before we get to the schedule."
     priority: high
 
   holt_briefing:
     id: holt_briefing
     character: CDR. HOLT
-    message: "Quick rule from ops: prod tables go in a <highlight>separate schema</highlight> from anything else. I don't want an engineer accidentally writing test data into the table I'm reading from at 6am. Whatever you set up here, make sure it's isolated."
+    message: "One rule from ops: prod tables go in a <highlight>separate schema</highlight> from everything else. I don't want some engineer accidentally writing test data into the table I'm reading at 6am. Whatever you set up here, keep it isolated."
     priority: normal
 
   overview:
     id: overview
     character: NAV
-    message: "Open the <highlight>ENVIRONMENT tab</highlight> at the bottom. Five fields to fill in:\n• <highlight>Name</highlight> — what the scheduler calls this environment\n• <highlight>Git branch</highlight> — the branch this environment builds from (prod tracks `main`)\n• <highlight>Target schema</highlight> — where dbt writes tables\n• <highlight>Threads</highlight> — model parallelism\n• <highlight>dbt version</highlight> — pinned, on purpose\nIn the real dbt platform these live on the deployment environment record. Jobs point at them by name."
+    message: "Open the <highlight>ENVIRONMENT tab</highlight> at the bottom. Five fields to fill in:\n• <highlight>Name</highlight>: what the scheduler calls this environment\n• <highlight>Git branch</highlight>: the branch this environment builds from (prod tracks `main`)\n• <highlight>Target schema</highlight>: where dbt writes tables\n• <highlight>Threads</highlight>: model parallelism\n• <highlight>dbt version</highlight>: pinned, on purpose\nIn the real dbt platform these live on the deployment environment record, and jobs point at them by name."
     priority: normal
 
   name_done:
     id: name_done
     character: NAV
-    message: "Environment named. <highlight>This is the label the next level's job will reference</highlight> — pointing a job at a missing environment is one of the most common deploy mistakes, so platforms are strict about it."
+    message: "Environment named. <highlight>This is the label the next level's job will reference.</highlight> Pointing a job at a missing environment is one of the most common deploy mistakes, which is why platforms are strict about it."
     priority: normal
 
   branch_done:
     id: branch_done
     character: NAV
-    message: "Branch tied to the environment. <highlight>Every scheduled run pulls fresh from this branch</highlight>, so prod always tracks `main` — the code you just merged into last level. In dev you might point at a long-lived `develop` branch, or per-engineer branches so each engineer's environment runs their own work. <highlight>One environment, one branch</highlight> — that pairing is the contract between your code and your warehouse."
+    message: "Branch tied to the environment. <highlight>Every scheduled run pulls fresh from this branch</highlight>, so prod always tracks `main`, the code you just merged into last level. In dev you might point at a long-lived `develop` branch, or per-engineer branches so each engineer's environment runs their own work. <highlight>One environment, one branch.</highlight> That pairing is the contract between your code and your warehouse."
     priority: normal
 
   schema_done:
     id: schema_done
     character: NAV
-    message: "Schema set. <highlight>One environment, one schema</highlight> is the rule. In dev each engineer typically gets their own schema (`dev_alex`, `dev_kai`) — that's how five people can work on the same project without overwriting each other's tables. Prod gets a shared one everyone reads from."
+    message: "Schema set. The rule is <highlight>one environment, one schema</highlight>. In dev each engineer usually gets their own (`dev_alex`, `dev_kai`), and that's how five people work on the same project without overwriting each other's tables. Prod gets a shared one everyone reads from."
     priority: normal
 
   threads_done:
     id: threads_done
     character: DR. MATSURI
-    message: "Quick PSA on threads — <highlight>more isn't always faster.</highlight> Past 8 or so, the warehouse becomes the bottleneck and the extra parallelism just means more queries fighting for the same compute. Start low and benchmark before you crank it. 4 is a good default for Helios's volume."
+    message: "One thing about threads: <highlight>more isn't always faster.</highlight> Past 8 or so, the warehouse becomes the bottleneck and the extra parallelism just means more queries fighting over the same compute. Start low and benchmark before you crank it up. For Helios's volume, 4 is a good default."
     priority: normal
 
   version_done:
     id: version_done
     character: NAV
-    message: "dbt version pinned. <highlight>The point isn't using the newest dbt</highlight> — it's making sure your prod environment doesn't silently upgrade between Tuesday and Wednesday and start failing on syntax that used to work. Pin it, test new versions in dev first, promote when ready."
+    message: "dbt version pinned. <highlight>The point isn't running the newest dbt.</highlight> It's making sure your prod environment doesn't silently upgrade between Tuesday and Wednesday and start failing on syntax that used to work. Pin it, test new versions in dev first, and promote when you're ready."
     priority: normal
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Production environment is configured. <highlight>The platform has a target to point at.</highlight> Now we need to actually point something at it."
+    message: "Production environment is configured. <highlight>The platform has a target to point at.</highlight> Now we just need something pointed at it."
     priority: high
 
   next_steps:
     id: next_steps
     character: NAV
-    message: "Next level: define the <highlight>job</highlight>. A job is a sequence of dbt commands pointed at a specific environment, run on a specific schedule. You'll wire one up that points at the environment you just set up."
+    message: "Next up, we define the <highlight>job</highlight>. A job is a sequence of dbt commands pointed at a specific environment and run on a specific schedule. You'll wire one up that points at the environment you just built."
     priority: normal
+
+quiz:
+  - question: "Why pin a specific dbt version on a production deployment environment?"
+    options:
+      - "So a new dbt release can't silently change behavior in your prod jobs"
+      - "Older versions run faster"
+      - "Pinning is required by dbt to run jobs"
+      - "It locks the SQL syntax you can write"
+    correct: 0
+    explanation: "Pinning makes upgrades a deliberate choice. Without it, a dbt release that changes a default or deprecates a macro can break prod with no code change on your side."
+  - question: "What does the `threads` setting control on an environment?"
+    options:
+      - "How many models dbt builds in parallel against the warehouse"
+      - "How many users can edit the project at once"
+      - "How many seeds are loaded simultaneously"
+      - "The number of retries on a failed run"
+    correct: 0
+    explanation: "Threads control parallel model builds. More threads mean faster runs, up to the point your warehouse can actually serve that many concurrent queries. Past that, the returns diminish or queries just start queuing."

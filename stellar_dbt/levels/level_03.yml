@@ -275,31 +275,31 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Okay — sources are wired up, so dbt knows where the raw data lives. Now we actually <highlight>transform</highlight> it. Two layers this level: <highlight>staging</highlight> (clean per source table) and <highlight>marts</highlight> (analyst-facing combos of staging models). That's the standard dbt project shape."
+    message: "Okay, sources are wired up, so dbt knows where the raw data lives. Now we actually <highlight>transform</highlight> it. Two layers this level: <highlight>staging</highlight> (clean per source table) and <highlight>marts</highlight> (analyst-facing combos of staging models). That's the standard shape of a dbt project."
     priority: high
 
   matsuri_briefing:
     id: matsuri_briefing
     character: DR. MATSURI
-    message: "Kai Matsuri, head of logistics — Holt said you'd be down. Quick context on the cargo data: every row in raw_shipments is one delivery. <highlight>cargo_mass comes in as a string with a 'kg' suffix</highlight> because the loading bay scales output formatted text. status is whatever the dock crew typed — usually uppercase, sometimes mixed. Origin and destination columns are short planet codes. The planet name lives over in raw_planets. Standard mess. Clean it up however you like."
+    message: "Kai Matsuri, head of logistics. Holt said you'd be down. A bit of context on the cargo data: every row in raw_shipments is one delivery. <highlight>cargo_mass comes in as a string with a 'kg' suffix</highlight> because the loading bay scales spit out formatted text. status is whatever the dock crew typed, usually uppercase, sometimes mixed. Origin and destination are short planet codes. The planet name itself lives over in raw_planets. Standard mess. Clean it up however you like."
     priority: normal
 
   staging_guide:
     id: staging_guide
     character: NAV
-    message: "Open <highlight>stg_shipments.sql</highlight> and click <highlight>raw_shipments</highlight> under SOURCE DATA so you can see the raw columns. <highlight>stg_planets.sql</highlight> is a finished example — same pattern. Basically: rename columns to use clearer IDs, cast types properly, normalize the values. The objectives panel has the specifics."
+    message: "Open <highlight>stg_shipments.sql</highlight>, then click <highlight>raw_shipments</highlight> under SOURCE DATA so you can see the raw columns. <highlight>stg_planets.sql</highlight> is a finished example using the same pattern. The gist: rename columns to clearer IDs, cast types properly, normalize the values. The objectives panel has the specifics."
     priority: normal
 
   first_run_fail:
     id: first_run_fail
     character: NAV
-    message: "Run didn't work — that's fine. Check the error output in the terminal, dbt is pretty good about telling you exactly what file and line broke. Seriously, read the error message, it'll save you a lot of guessing."
+    message: "Run didn't work. That's fine. Check the error output in the terminal; dbt is pretty good about telling you exactly which file and line broke. Seriously, read the error message. It'll save you a lot of guessing."
     priority: normal
 
   source_staging_pattern:
     id: source_staging_pattern
     character: NAV
-    message: "Quick note on how dbt projects are usually set up. You generally want <highlight>one staging model for each source table</highlight>. So raw_shipments gets stg_shipments, raw_planets gets stg_planets. The staging layer is where all the cleaning happens, that way every model downstream is working with consistent, well-named columns. Nobody else has to worry about the raw data."
+    message: "A note on how dbt projects usually get laid out. As a rule you want <highlight>one staging model for each source table</highlight>. So raw_shipments gets stg_shipments, raw_planets gets stg_planets. The staging layer is where all the cleaning happens, so every model downstream works with consistent, well-named columns and nobody else has to think about the raw data."
     priority: high
 
   staging_complete:
@@ -311,31 +311,31 @@ narrative_script:
   mart_guide:
     id: mart_guide
     character: NAV
-    message: "Open <highlight>fct_trade_routes.sql</highlight>. This is a mart — where you combine staging models into something useful. Use <highlight>ref('stg_shipments')</highlight> and <highlight>ref('stg_planets')</highlight> to pull the data in. That's how dbt knows what depends on what. The comments in the file explain more."
+    message: "Open <highlight>fct_trade_routes.sql</highlight>. This is a mart, where you combine staging models into something useful. Use <highlight>ref('stg_shipments')</highlight> and <highlight>ref('stg_planets')</highlight> to pull the data in. That's how dbt knows what depends on what. The comments in the file go into more detail."
     priority: normal
 
   ref_importance:
     id: ref_importance
     character: NAV
-    message: "Reason we use ref() instead of writing the table name directly: ref() does two things. <highlight>It tells dbt this model depends on that model</highlight>, so dbt builds them in the right order. And if the underlying table ever moves or gets renamed, <highlight>ref() still resolves correctly</highlight>. Hardcoding table names is how you end up with stuff that breaks silently at 3am."
+    message: "Here's why we use ref() instead of writing the table name directly. ref() does two things. <highlight>It tells dbt this model depends on that model</highlight>, so dbt builds them in the right order. And if the underlying table ever moves or gets renamed, <highlight>ref() still resolves correctly</highlight>. Hardcoding table names is how you end up with things that break silently at 3am."
     priority: normal
 
   hardcode_warning:
     id: hardcode_warning
     character: NAV
-    message: "Heads up — direct table reference in there. Use ref() instead. If you hardcode the name and that table moves, this model just breaks with no warning. ref() handles all of that for you."
+    message: "Spotted a direct table reference in there. Use ref() instead. If you hardcode the name and that table moves, this model just breaks with no warning. ref() handles all of that for you."
     priority: high
 
   join_guide:
     id: join_guide
     character: NAV
-    message: "Nice, both refs are wired up. Next step is joining the data. Each shipment has an <highlight>origin_planet_id</highlight> that maps to <highlight>planet_id</highlight> in stg_planets — join on that to pull in the origin planet name. Then for the route summary we need <highlight>count(*) as shipment_count</highlight> and <highlight>sum(cargo_mass_kg) as total_mass_kg</highlight> grouped by origin planet."
+    message: "Nice, both refs are wired up. Next step is joining the data. Each shipment has an <highlight>origin_planet_id</highlight> that maps to <highlight>planet_id</highlight> in stg_planets, so join on that to pull in the origin planet name. Then for the route summary you'll want <highlight>count(*) as shipment_count</highlight> and <highlight>sum(cargo_mass_kg) as total_mass_kg</highlight> grouped by origin planet."
     priority: normal
 
   materialization_explain:
     id: materialization_explain
     character: NAV
-    message: "Config block set. <highlight>Quick deeper dive on materializations</highlight> while you're here. dbt's default is <highlight>view</highlight> — the model becomes a CREATE VIEW statement that re-runs the SELECT every time someone queries it. Cheap, no storage, always fresh. For staging models (light cleaning, queried only by downstream models) that's perfect. <highlight>Marts get queried directly by analysts and dashboards</highlight>, often dozens of times per minute — a view there means recomputing the joins on every query. <highlight>materialized='table'</highlight> writes the result to disk once per dbt run, then every analyst query just reads from cache. There's also <highlight>ephemeral</highlight> (the model gets inlined as a CTE wherever it's ref'd, never written) and <highlight>incremental</highlight> for huge tables that are too expensive to rebuild every run — the bonus arc has a dedicated level on incremental. For most projects, though: staging → view, marts → table."
+    message: "Config block set. Since you're here, let me go a little deeper on <highlight>materializations</highlight>. dbt's default is <highlight>view</highlight>: the model becomes a CREATE VIEW statement that re-runs the SELECT every time someone queries it. Cheap, no storage, always fresh. For staging models (light cleaning, queried only by downstream models) that's perfect. But <highlight>marts get queried directly by analysts and dashboards</highlight>, often dozens of times per minute, and a view there means recomputing the joins on every single query. <highlight>materialized='table'</highlight> writes the result to disk once per dbt run, and after that every analyst query just reads from cache. There's also <highlight>ephemeral</highlight> (the model gets inlined as a CTE wherever it's ref'd, never written) and <highlight>incremental</highlight> for huge tables that are too expensive to rebuild every run. The bonus arc has a whole level on incremental. For most projects the rule of thumb is simple: staging → view, marts → table."
     priority: normal
 
   first_success:
@@ -347,17 +347,43 @@ narrative_script:
   dag_explanation:
     id: dag_explanation
     character: NAV
-    message: "Check the output — dbt built your models <highlight>in dependency order</highlight> automatically. Sources first, then staging, then the mart. You didn't have to tell it that. It figured it out from your ref() calls. That's basically the whole point of dbt: <highlight>you define the relationships, it handles the build order</highlight>."
+    message: "Check the output. dbt built your models <highlight>in dependency order</highlight> automatically: sources first, then staging, then the mart. You didn't have to tell it that. It worked the order out from your ref() calls. That's basically the whole point of dbt. <highlight>You define the relationships, it handles the build order</highlight>."
     priority: normal
 
   analyses_aside:
     id: analyses_aside
     character: NAV
-    message: "Quick aside on a folder we haven't touched yet. dbt has an <highlight>analyses/</highlight> folder for SQL files that compile (so you get ref() and source() resolution) but <highlight>don't materialize</highlight> as tables or views. Use it for ad-hoc analyst queries you want versioned alongside the project — Holt's quarterly business reviews, root-cause queries during an incident — without polluting the warehouse with one-off tables. Not needed for this level, just worth knowing it's there."
+    message: "One folder we haven't touched yet: dbt has an <highlight>analyses/</highlight> folder for SQL files that compile (so you still get ref() and source() resolution) but <highlight>don't materialize</highlight> as tables or views. It's handy for ad-hoc analyst queries you want versioned alongside the project, like Holt's quarterly business reviews or root-cause queries during an incident, without cluttering the warehouse with one-off tables. You won't need it this level, but it's good to know it's there."
     priority: low
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Staging and marts are live. Holt's got her first real table to look at. <highlight>That's the Models lesson.</highlight> Next we go back to sources and make them production-grade — freshness, schemas, the works."
+    message: "Staging and marts are live, and Holt's got her first real table to look at. That covers <highlight>models</highlight>. Next we head back to sources and make them production-grade: freshness, schemas, the works."
     priority: high
+
+quiz:
+  - question: "What's the difference between `source()` and `ref()`?"
+    options:
+      - "`source()` points at raw tables declared in YAML; `ref()` points at another dbt model"
+      - "`source()` is for production, `ref()` is for development"
+      - "There's no difference; they're aliases"
+      - "`ref()` is for joins, `source()` is for filters"
+    correct: 0
+    explanation: "`source()` resolves to raw tables outside your dbt project. `ref()` resolves to other models inside it, and it's what gives dbt its DAG, so it knows what to build before what."
+  - question: "How does dbt figure out the build order for your models?"
+    options:
+      - "By the alphabetical order of the .sql filenames"
+      - "From the `ref()` and `source()` calls, which form the DAG"
+      - "From the order they're listed in dbt_project.yml"
+      - "It runs them all in parallel and hopes for the best"
+    correct: 1
+    explanation: "Every `ref()` is an edge in the DAG. dbt walks the graph and runs upstream models before downstream ones. You describe relationships; dbt picks the order."
+  - question: "What does `{{ config(materialized='table') }}` at the top of a model do?"
+    options:
+      - "Tells dbt to materialize this model as a table (CREATE TABLE AS) instead of the default view"
+      - "Marks the model as read-only"
+      - "Adds the model to a separate schema called 'table'"
+      - "Forces dbt to rebuild every model in the project as a table"
+    correct: 0
+    explanation: "The default materialization is `view`. Switching to `table` tells dbt to persist the results. Usually faster for downstream queries, at the cost of taking storage and only refreshing on each run."

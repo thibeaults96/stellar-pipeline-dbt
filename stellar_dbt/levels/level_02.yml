@@ -49,7 +49,7 @@ initial_files:
 objectives:
   - id: load_seeds
     label: "Click 'dbt seed' to load the raw CSVs into DuckDB"
-    hint: "dbt seed is the first command on any new project — it loads everything under seeds/ into the warehouse so your models have something to read from."
+    hint: "dbt seed loads everything under seeds/ into the warehouse so your models have something to read from. In a real project seeds are reserved for small, static reference data; your main raw data would land through a loading tool instead. Here it's how we get the cargo data in."
     check:
       type: duckdb_row_count
       table: raw_shipments
@@ -122,47 +122,65 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Now we set up the project properly. Two things have to exist before dbt can do anything useful: the raw data has to be loaded, and dbt has to know about it. <highlight>Loading is dbt seed. Knowing about it is the sources YAML.</highlight> We'll do both this level."
+    message: "Now we set the project up properly. Two things have to be true before dbt can do anything useful: the raw data has to be loaded, and dbt has to know about it. In production a loading tool handles that first part, but in this sandbox <highlight>dbt seed stands in for loading</highlight>. <highlight>Knowing about the data is the sources YAML.</highlight> We'll handle both this level."
     priority: high
 
   project_tour:
     id: project_tour
     character: NAV
-    message: "Quick orientation on the file tree. <highlight>dbt_project.yml</highlight> at the root is the project config — name, profile, paths. <highlight>seeds/</highlight> holds your raw CSVs. <highlight>models/sources/</highlight> is where you declare sources for dbt. <highlight>models/staging/</highlight> and <highlight>models/marts/</highlight> are where your SQL transformations live. Open <highlight>helios_sources.yml</highlight> — you'll see two TODO comments where the source tables need to be declared."
+    message: "A quick look at the file tree. <highlight>dbt_project.yml</highlight> at the root is the project config: name, profile, paths. <highlight>seeds/</highlight> holds your raw CSVs. <highlight>models/sources/</highlight> is where you declare sources for dbt. <highlight>models/staging/</highlight> and <highlight>models/marts/</highlight> are where your SQL transformations live. Open <highlight>helios_sources.yml</highlight> and you'll see two TODO comments where the source tables need to be declared."
     priority: normal
 
   seed_done:
     id: seed_done
     character: NAV
-    message: "Seeds loaded. Now <highlight>raw_shipments</highlight> and <highlight>raw_planets</highlight> are real tables sitting in DuckDB under the <highlight>main</highlight> schema. But dbt itself doesn't know about them yet — only the database does. That's what the sources YAML fixes."
+    message: "Seeds loaded. <highlight>raw_shipments</highlight> and <highlight>raw_planets</highlight> are real tables now, sitting in DuckDB under the <highlight>main</highlight> schema. Trouble is, dbt itself doesn't know about them yet. Only the database does. That's the gap the sources YAML closes."
     priority: normal
 
   run_fail:
     id: run_fail
     character: NAV
-    message: "Run failed. Read the error in the terminal — if it says <highlight>Compilation Error</highlight> and mentions a source that can't resolve, that means helios_sources.yml is missing the table. Sources are case-sensitive and indentation-sensitive. The pattern is exactly: `- name: raw_table_name` under `tables:`."
+    message: "Run failed. Read the error in the terminal. If it says <highlight>Compilation Error</highlight> and mentions a source that can't resolve, that means helios_sources.yml is missing the table. Sources are case-sensitive and indentation-sensitive. The pattern is exactly `- name: raw_table_name` under `tables:`."
     priority: normal
 
   shipments_done:
     id: shipments_done
     character: NAV
-    message: "raw_shipments is declared. One more — add raw_planets the same way. Once both are in, the locked <highlight>stg_planets.sql</highlight> will have everything it needs to compile."
+    message: "raw_shipments is declared. One more to go: add raw_planets the same way. Once both are in, the locked <highlight>stg_planets.sql</highlight> will have everything it needs to compile."
     priority: normal
 
   planets_done:
     id: planets_done
     character: CDR. HOLT
-    message: "I'm seeing both sources in your YAML. Good — that means anyone who walks into this project later can see exactly which raw tables we depend on. <highlight>Self-documenting infrastructure.</highlight> That's the whole pitch."
+    message: "I'm seeing both sources in your YAML. Good. That means anyone who walks into this project later can see exactly which raw tables we depend on. <highlight>Self-documenting infrastructure.</highlight> Exactly what I want."
     priority: normal
 
   run_success:
     id: run_success
     character: NAV
-    message: "stg_planets built. Notice dbt resolved <highlight>source('helios', 'raw_planets')</highlight> to the actual seeded table at compile time — that's the indirection that makes sources useful. If we ever move raw_planets to a different schema, we change one line of YAML, not every model."
+    message: "stg_planets built. Notice dbt resolved <highlight>source('helios', 'raw_planets')</highlight> to the actual seeded table at compile time. That layer of indirection is what makes sources useful. If we ever move raw_planets to a different schema, we change one line of YAML instead of every model."
     priority: high
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Project is wired up. Seeds loaded, sources declared, first model built. <highlight>That's Set Up dbt.</highlight> Next level we leave the scaffolding behind and write real staging and mart models. Dr. Matsuri's been waiting to talk to you about the data."
+    message: "Project's wired up. Seeds loaded, sources declared, first model built. That's the <highlight>setup</highlight> done. Next level we leave the scaffolding behind and write real staging and mart models. Dr. Matsuri's been waiting to walk you through the data."
     priority: high
+
+quiz:
+  - question: "Why declare raw tables under a `sources:` block in YAML?"
+    options:
+      - "It tells dbt where the raw tables live so you can reference them with `source()` and track them in lineage"
+      - "It physically moves the tables into a different schema"
+      - "It's required for `dbt seed` to load CSVs"
+      - "It generates the raw tables from the YAML"
+    correct: 0
+    explanation: "Sources are dbt's typed pointer to raw tables that already exist in the warehouse. Declaring them lets you reference with `source()` and gives you lineage, freshness, and tests on raw data."
+  - question: "When you write `{{ source('helios', 'raw_shipments') }}` in a model, when does dbt resolve it?"
+    options:
+      - "At compile time, before the SQL hits the warehouse"
+      - "Only at run time, after the query starts executing"
+      - "Manually; you have to run `dbt resolve` first"
+      - "Never; it stays as a literal string in the compiled SQL"
+    correct: 0
+    explanation: "Jinja is rendered at compile time. dbt swaps `{{ source(...) }}` for the fully-qualified table name before the query is sent to the warehouse. That's how environments stay swappable."

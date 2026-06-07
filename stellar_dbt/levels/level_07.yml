@@ -237,95 +237,113 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "<highlight>Everything works in dev. Now we ship it.</highlight> Two pieces of shipping the code: a clean <highlight>dbt build</highlight> end-to-end (seed + run + test + snapshot), and a <highlight>git promotion</highlight> from your branch to main. Environment configuration and scheduling are the next two levels — first we ship the code."
+    message: "<highlight>Everything works in dev. Now we ship it.</highlight> Shipping the code comes down to two things: a clean <highlight>dbt build</highlight> end to end (seed + run + test + snapshot), and a <highlight>git promotion</highlight> from your branch to main. We'll handle environment config and scheduling in the next two levels. Right now, let's just get the code out the door."
     priority: high
 
   holt_briefing:
     id: holt_briefing
     character: CDR. HOLT
-    message: "Walked over to say I see what you've built. Sources declared, tests catching the bad rows, docs on every column. <highlight>This is the warehouse I asked for.</highlight> Wire it up to deploy and we'll set the scheduled refresh on the platform side. I want the next supply cycle running off this."
+    message: "Came over in person to tell you I've seen what you built. Sources declared, tests catching the bad rows, docs on every column. <highlight>This is the warehouse I asked for.</highlight> Wire it up to deploy and we'll set the scheduled refresh on the platform side. I want the next supply cycle running off this."
     priority: high
 
   build_done:
     id: build_done
     character: NAV
-    message: "<highlight>dbt build</highlight> ran clean. Seeds loaded, models built, tests passed, all in dependency order. That's the deploy command. In production you'd run this in CI on every PR, then again on a schedule against prod."
+    message: "<highlight>dbt build</highlight> ran clean. Seeds loaded, models built, tests passed, all in dependency order. This is the command you deploy with. In production you'd run it in CI on every PR, then again on a schedule against prod."
     priority: high
 
   envs_explain:
     id: envs_explain
     character: NAV
-    message: "Quick aside on environments. Right now you've got <highlight>one target</highlight> — local DuckDB. In a real deployment you'd have at least two: <highlight>dev</highlight> (each engineer writes to their own schema) and <highlight>prod</highlight> (a shared, scheduled target). <highlight>profiles.yml</highlight> is where those live. Same `dbt build` command, different target, different database."
+    message: "While we're here, a word on environments. Right now you've got <highlight>one target</highlight>, local DuckDB. A real deployment has at least two: <highlight>dev</highlight>, where each engineer writes to their own schema, and <highlight>prod</highlight>, a shared target that runs on a schedule. <highlight>profiles.yml</highlight> is where those live. It's the same `dbt build` command pointed at a different target and a different database."
     priority: normal
 
   git_guide:
     id: git_guide
     character: NAV
-    message: "Local build is green. But \"works on my machine\" isn't deployed. Open the <highlight>DEPLOY tab</highlight> at the bottom — that's the git side of this. You're on a feature branch right now; the work has to travel <highlight>branch → commit → pull request → CI → merge to main</highlight> before it counts as shipped. Stage what you changed, commit it, open a PR, and merge once CI is green."
+    message: "Local build is green. But \"works on my machine\" isn't the same as deployed. Open the <highlight>DEPLOY tab</highlight> at the bottom; that's the git side of this. You're on a feature branch, and the work has to travel <highlight>branch → commit → pull request → CI → merge to main</highlight> before it counts as shipped. So: stage what you changed, commit it, open a PR, and merge once CI goes green."
     priority: high
 
   branch_explain:
     id: branch_explain
     character: NAV
-    message: "Real fast on branches before we go further. <highlight>A branch is a named pointer to a chain of commits.</highlight> `main` is the branch that represents production. <highlight>feature/deploy-pipeline</highlight> is the branch you're working on — it diverged from main when you started this work. Your edits exist on your branch and nowhere else until you merge. <highlight>This is how multiple people can work on the same codebase without overwriting each other</highlight> — each person on their own branch, then merges happen one at a time."
+    message: "Before we go further, branches. <highlight>A branch is a named pointer to a chain of commits.</highlight> `main` is the branch that represents production. <highlight>feature/deploy-pipeline</highlight> is the one you're working on, and it split off from main when you started. Until you merge, your edits live on your branch and nowhere else. <highlight>This is how multiple people can work on the same codebase without overwriting each other</highlight>: everyone on their own branch, and merges happen one at a time."
     priority: normal
 
   staged:
     id: staged
     character: NAV
-    message: "Staged. <highlight>Quick note on what \"staging\" actually means in git</highlight> — it's a holding area between your working files and the next commit. You can edit five files and only stage three; only those three end up in the commit. We staged all changes here because it's a small batch, but in real work you'll often want to commit logical chunks separately for cleaner history."
+    message: "Staged. So <highlight>what does \"staging\" actually mean in git?</highlight> It's a holding area between your working files and the next commit. You can edit five files and stage only three, and just those three land in the commit. We staged everything here because it's a small batch, but in real work you'll often commit logical chunks separately to keep the history clean."
     priority: normal
 
   committed:
     id: committed
     character: NAV
-    message: "Commit lands. <highlight>A commit is a labeled snapshot of your work</highlight> — your message says what changed and why, and the commit gets a hash you can always come back to. Nobody else has seen it yet — it's still <highlight>local to your branch</highlight>. The commit exists in your repo, not on the remote, not on main. That's the next step."
+    message: "Commit lands. <highlight>A commit is a labeled snapshot of your work.</highlight> Your message says what changed and why, and the commit gets a hash you can always jump back to. Nobody else has seen it, though. It's still <highlight>local to your branch</highlight>, sitting in your repo and not on the remote or on main. Getting it there is the next step."
     priority: normal
 
   pr_opened:
     id: pr_opened
     character: NAV
-    message: "PR opened. Three things happen automatically when you push a branch and open a PR: your commit gets pushed to the <highlight>remote repository</highlight> (the shared copy everyone else can see), <highlight>CI fires</highlight>, and reviewers get notified. <highlight>The PR is the conversation</highlight> — review, discussion, approval. Merging is the moment of truth."
+    message: "PR opened. Pushing a branch and opening a PR kicks off three things automatically: your commit goes up to the <highlight>remote repository</highlight> (the shared copy everyone else can see), <highlight>CI fires</highlight>, and reviewers get notified. <highlight>The PR is the conversation</highlight>, where review and discussion and approval happen. Merging is the moment of truth."
     priority: normal
 
   ci_explainer:
     id: ci_explainer
     character: NAV
-    message: "Quick on CI. <highlight>Continuous Integration</highlight> means: every time a PR opens or updates, a fresh machine spins up, checks out your branch, and runs your tests. For a dbt project, CI usually runs <highlight>dbt build</highlight> against a clean schema — same thing you ran locally, but in a controlled environment nobody else's changes can contaminate. If it passes, you have evidence the merge is safe. If it fails, the PR is gated and the error is right there in the check."
+    message: "A word on CI. <highlight>Continuous Integration</highlight> means that every time a PR opens or updates, a fresh machine spins up, checks out your branch, and runs your tests. For a dbt project, CI usually runs <highlight>dbt build</highlight> against a clean schema. It's the same thing you ran locally, just in a controlled environment that nobody else's changes can contaminate. Pass, and you've got evidence the merge is safe. Fail, and the PR is gated with the error sitting right there in the check."
     priority: normal
 
   review_explainer:
     id: review_explainer
     character: DR. MATSURI
-    message: "And one more piece — <highlight>code review</highlight>. CI catches mechanical breakage; review catches things only a human notices. Like: does this model name match what we call it everywhere else? Is this aggregation actually what Holt asked for? Two engineers, ten minutes — and most production bugs never make it past that filter."
+    message: "One more piece, and it's <highlight>code review</highlight>. CI catches mechanical breakage; review catches the stuff only a human notices. Does this model name match what we call it everywhere else? Is this aggregation actually what Holt asked for? Two engineers, ten minutes, and most production bugs never make it past that filter."
     priority: normal
 
   merged:
     id: merged
     character: NAV
-    message: "Merged to main. <highlight>Your changes are now part of the production codebase.</highlight> The next scheduled refresh — once we set one up — will pick them up. In the real world this is the only moment that matters; everything before it is just safety rails."
+    message: "Merged to main. <highlight>Your changes are now part of the production codebase.</highlight> The next scheduled refresh will pick them up, once we set one up. In the real world this is the only moment that actually counts. Everything before it is just safety rails."
     priority: high
 
   remote_explainer:
     id: remote_explainer
     character: NAV
-    message: "And to close the loop on git: <highlight>main on the remote</highlight> is the source of truth — that's the version every CI run, every deploy, every other engineer's fresh clone reads from. The local main on your laptop is just a cached copy. When you `git pull main` you're updating your cache. When the platform schedules a job, it always pulls fresh from the remote. That's how the orchestrator stays in sync with reality."
+    message: "To close the loop on git: <highlight>main on the remote</highlight> is the source of truth. It's the version every CI run, every deploy, and every other engineer's fresh clone reads from. The local main on your laptop is just a cached copy. When you `git pull main`, you're updating that cache. The platform always pulls fresh from the remote when it schedules a job, which is how the orchestrator stays in sync with reality."
     priority: normal
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Pipeline is built, committed, and merged. Holt's reading her morning report off your tables. Nothing on Helios is held together with scripts on someone's desk anymore. <highlight>That's deployment.</highlight>"
+    message: "Pipeline is built, committed, and merged. Holt's reading her morning report off your tables. Nothing on Helios is held together by scripts on someone's desk anymore. <highlight>That's what deployment looks like.</highlight>"
     priority: high
 
   holt_signoff:
     id: holt_signoff
     character: CDR. HOLT
-    message: "I've got numbers I trust. The crew has freshness alerts they don't have to babysit. The docs site is bookmarked on every dashboard in ops. <highlight>You did what I hired you for in seven shifts</highlight>. Two more pieces — get the production environment configured and a scheduled refresh wired up, then take the rest of the cycle off."
+    message: "I've got numbers I trust. The crew has freshness alerts they don't have to babysit. The docs site is bookmarked on every dashboard in ops. <highlight>You did what I hired you for in seven shifts</highlight>. Two things left: get the production environment configured and a scheduled refresh wired up. Then take the rest of the cycle off."
     priority: normal
 
   next_steps:
     id: next_steps
     character: NAV
-    message: "Code is merged. <highlight>But code by itself doesn't run.</highlight> The platform needs a configured target to point at, then a schedule that decides when. Next level: set up the production environment. Then we'll wire a job at it."
+    message: "Code is merged. <highlight>But code by itself doesn't run.</highlight> The platform needs a configured target to point at, and then a schedule to decide when. So next level we set up the production environment, and after that we'll wire a job at it."
     priority: normal
+
+quiz:
+  - question: "What does `dbt build` do that `dbt run` doesn't?"
+    options:
+      - "It runs models and their tests together in dependency order, failing fast when a test breaks"
+      - "It compiles SQL without executing it"
+      - "It only builds the models that changed since the last run"
+      - "It pushes your code to git"
+    correct: 0
+    explanation: "`dbt build` interleaves run and test in DAG order. If a model or its tests fail, downstream work gets skipped. That's much closer to what you want in CI than running `run` and then `test` separately."
+  - question: "Why open a pull request instead of pushing directly to main?"
+    options:
+      - "Code review and CI run before changes hit the shared branch"
+      - "It's the only way to deploy"
+      - "PRs are required to write SQL"
+      - "It compiles your code faster"
+    correct: 0
+    explanation: "PRs gate changes on review and automated checks. Pushing straight to main skips both. That's fine for a solo experiment, but dangerous once other people's work depends on main."

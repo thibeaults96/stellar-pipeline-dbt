@@ -83,6 +83,19 @@ export interface ScheduleSetRequest {
   commands?: string[]; environment_name?: string
 }
 
+export interface QuizQuestion {
+  question: string
+  options: string[]
+  correct: number
+  explanation: string
+}
+
+export interface Quiz {
+  levelId: number
+  levelTitle: string
+  questions: QuizQuestion[]
+}
+
 export const api = {
   getStatus: (): Promise<GameStatus> => get('/status'),
   startLevel: (id: number): Promise<ActionReport> => post(`/start/${id}`),
@@ -123,4 +136,7 @@ export const api = {
   getSchedule: (): Promise<ScheduleState> => get('/schedule'),
   setSchedule: (body: ScheduleSetRequest): Promise<ActionReport> => post('/schedule', body),
   triggerSchedule: (): Promise<ActionReport> => post('/schedule/trigger'),
+  // Inter-level quiz — non-blocking check-for-understanding shown when the
+  // player clicks Next Mission. Empty `questions` means skip the quiz.
+  getQuiz: (levelId: number): Promise<Quiz> => get(`/quiz/${levelId}`),
 }

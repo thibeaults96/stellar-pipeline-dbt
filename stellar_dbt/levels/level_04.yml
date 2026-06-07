@@ -188,41 +188,59 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Quick story: last quarter the receiver array at dock 3 went offline for 14 hours. Nobody noticed until Holt's morning report showed a 60% drop in shipments and she paged the wrong team. <highlight>The data wasn't wrong. The data wasn't there.</highlight> This level we set up source freshness so dbt flags that kind of thing automatically instead of waiting for a human to notice."
+    message: "Let me tell you about last quarter. The receiver array at dock 3 went dark for 14 hours and nobody caught it until Holt's morning report showed shipments down 60%, at which point she paged the wrong team. <highlight>The data wasn't wrong. The data wasn't there.</highlight> So this level we set up source freshness, which lets dbt flag that kind of thing on its own instead of waiting on someone to spot it."
     priority: high
 
   freshness_guide:
     id: freshness_guide
     character: NAV
-    message: "Open <highlight>helios_sources.yml</highlight>. raw_shipments has a new <highlight>loaded_at</highlight> column — that's the timestamp the dock crew stamps when a row hits the warehouse. You'll wire it up as a <highlight>freshness contract</highlight>: tell dbt which column tracks freshness, and set warn/error thresholds. Then click <highlight>dbt freshness</highlight> in the toolbar to actually run the check."
+    message: "Open <highlight>helios_sources.yml</highlight>. raw_shipments picked up a new <highlight>loaded_at</highlight> column, which is the timestamp the dock crew stamps whenever a row lands in the warehouse. You're going to wire it up as a <highlight>freshness contract</highlight>. Tell dbt which column tracks freshness, then set your warn and error thresholds. When that's in, hit <highlight>dbt freshness</highlight> in the toolbar to run the check for real."
     priority: normal
 
   lineage_hint:
     id: lineage_hint
     character: NAV
-    message: "Quick aside while the pipeline builds — open the <highlight>DAG</highlight> tab at the bottom. That graph is generated from your source() and ref() calls. Sources are the nodes with no inputs. <highlight>That's lineage</highlight> — and it's the same graph the docs site renders. The whole point of sources is making that graph honest: raw tables are explicit nodes, not implicit assumptions."
+    message: "While the pipeline builds, open the <highlight>DAG</highlight> tab at the bottom. dbt generates that graph straight from your source() and ref() calls, and the sources are the nodes with nothing feeding into them. <highlight>That's lineage</highlight>, and it's the exact same graph the docs site renders. The reason sources matter is that they keep the graph honest: raw tables become explicit nodes instead of assumptions you're carrying in your head."
     priority: normal
 
   freshness_done:
     id: freshness_done
     character: NAV
-    message: "Config looks good. Now click <highlight>dbt freshness</highlight> in the toolbar — that's <highlight>dbt source freshness</highlight> under the hood. It runs a SQL query against each source and reports pass / warn / error. If your YAML is wrong, dbt will tell you exactly what's off."
+    message: "Config looks good. Go click <highlight>dbt freshness</highlight> in the toolbar, which is just <highlight>dbt source freshness</highlight> under the hood. It runs a SQL query against each source and reports back pass, warn, or error. And if your YAML is off, dbt will tell you exactly where."
     priority: normal
 
   freshness_ran:
     id: freshness_ran
     character: NAV
-    message: "Freshness ran clean. In a real deploy, you'd schedule that command to run every few hours — and a `warn` or `error` result would page on-call. <highlight>This is how you make data outages visible.</highlight>"
+    message: "Freshness ran clean. In a real deploy you'd schedule that command every few hours, and a `warn` or `error` result would page on-call. Do that, and a data outage stops being something you find out about from an angry stakeholder. <highlight>dbt sees it first.</highlight>"
     priority: high
 
   freshness_failure:
     id: freshness_failure
     character: NAV
-    message: "Freshness errored out — the YAML didn't parse the way dbt expected. Read the error in the terminal, it points at the exact line. Common issues: missing <highlight>loaded_at_field</highlight>, wrong period name (must be minute / hour / day), or warn_after / error_after pointing at a scalar instead of a {count, period} mapping."
+    message: "Freshness errored out, which means the YAML didn't parse the way dbt expected. Read the error in the terminal; it points right at the line. The usual suspects: a missing <highlight>loaded_at_field</highlight>, the wrong period name (it has to be minute, hour, or day), or warn_after / error_after pointing at a plain value instead of a {count, period} mapping."
     priority: high
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Sources are real first-class citizens now. Lineage is honest, freshness is monitored, and the next dock outage gets caught by dbt instead of by Holt's coffee. <highlight>That's the Sources lesson.</highlight> Next up: tests — because nothing in the data has been validated yet, and the dock crew is creative with how they type values."
+    message: "Sources are first-class citizens now. Lineage is honest, freshness is monitored, and the next dock outage gets caught by dbt instead of by Holt's coffee. So that's <highlight>sources</highlight> handled. Next up is tests, because nothing in this data has actually been validated yet, and trust me, the dock crew gets creative with how they type things in."
     priority: high
+
+quiz:
+  - question: "What does `dbt source freshness` check?"
+    options:
+      - "How recently a source table was last loaded, based on a timestamp column you point it at"
+      - "Whether your models are using the latest dbt version"
+      - "Whether your sources have any rows at all"
+      - "Whether your YAML files have been updated this week"
+    correct: 0
+    explanation: "Freshness compares the max value of `loaded_at_field` against now(). It's how you catch stale raw data, like an EL pipeline that quietly stopped delivering."
+  - question: "What's the difference between `warn_after` and `error_after` in a freshness config?"
+    options:
+      - "`warn_after` raises a warning when data is older than the threshold; `error_after` fails the freshness check"
+      - "They're aliases for the same thing"
+      - "`warn_after` runs the test daily, `error_after` runs it hourly"
+      - "`warn_after` is for development, `error_after` is for production"
+    correct: 0
+    explanation: "It's two-tier alerting. A warn says the data is getting stale, while an error says it's broken and the job should fail. That way you can flag drift before it turns into downtime."

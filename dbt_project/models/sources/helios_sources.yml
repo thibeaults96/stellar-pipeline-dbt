@@ -6,6 +6,6 @@ sources:
     schema: main
     tables:
       - name: raw_shipments
-        description: "Cargo shipment records"
+        description: "Cargo shipment records from inbound and outbound vessels"
       - name: raw_planets
         description: "Planetary registry: ports of call along Helios routes"

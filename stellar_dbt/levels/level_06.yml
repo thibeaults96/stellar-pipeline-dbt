@@ -222,47 +222,65 @@ narrative_script:
   intro:
     id: intro
     character: NAV
-    message: "Pipeline works, tests catch the obvious problems. <highlight>But nobody can read this project.</highlight> Three weeks from now someone's going to open stg_shipments and have no idea what cargo_type means or whether status is uppercase or lowercase. <highlight>Documentation isn't decoration — it's the part of the warehouse that scales past you.</highlight>"
+    message: "The pipeline works and the tests catch the obvious stuff. <highlight>Problem is, nobody can actually read this project.</highlight> Three weeks from now somebody opens stg_shipments and has no clue what cargo_type means or whether status comes back uppercase or lowercase. <highlight>Documentation isn't decoration. It's the part of the warehouse that keeps working after you've moved on.</highlight>"
     priority: high
 
   doc_guide:
     id: doc_guide
     character: NAV
-    message: "Open <highlight>_stg_shipments.yml</highlight>. You'll see TODOs where descriptions belong: at the model level, and on individual columns. dbt reads these into the manifest and renders them in the docs site. Start with the model itself, then shipment_id. Use real sentences — placeholder values like 'x' or 'TODO' won't satisfy the checks."
+    message: "Open <highlight>_stg_shipments.yml</highlight>. You'll find TODOs marking where descriptions go, both at the model level and on individual columns. dbt reads these into the manifest and renders them in the docs site. Start with the model itself, then shipment_id. Write real sentences too; placeholders like 'x' or 'TODO' won't pass the checks."
     priority: normal
 
   first_run_note:
     id: first_run_note
     character: NAV
-    message: "Models built. <highlight>None of them have descriptions yet</highlight>, which means anyone reading the docs site sees just the column names. Fix that first."
+    message: "Models built. <highlight>None of them have descriptions yet</highlight>, so anyone opening the docs site just sees bare column names. Let's fix that first."
     priority: normal
 
   stg_desc_done:
     id: stg_desc_done
     character: NAV
-    message: "Good descriptions on the staging model. Now for something fancier — <highlight>doc blocks</highlight>. When a description gets long (say, the full enum of cargo types with examples), you don't want it crammed into the YAML. dbt lets you write Markdown blocks in `.md` files and reference them from the YAML."
+    message: "Nice descriptions on the staging model. Now for something a little fancier: <highlight>doc blocks</highlight>. Once a description gets long, say the full list of cargo types with examples, you don't want it crammed into the YAML. dbt lets you write Markdown blocks in `.md` files and pull them into the YAML by reference."
     priority: normal
 
   doc_block_guide:
     id: doc_block_guide
     character: NAV
-    message: "Open <highlight>models/_docs.md</highlight>. There's a TODO comment showing the shape. Write a docs block named <highlight>cargo_type</highlight> with a Markdown description of the column. Then in _stg_shipments.yml, set cargo_type's description to <highlight>\"{{ doc('cargo_type') }}\"</highlight>. dbt resolves it at compile time."
+    message: "Open <highlight>models/_docs.md</highlight>. There's a TODO comment that shows you the shape. Write a docs block named <highlight>cargo_type</highlight> with a Markdown description of the column. Then over in _stg_shipments.yml, set cargo_type's description to <highlight>\"{{ doc('cargo_type') }}\"</highlight>, and dbt resolves it at compile time."
     priority: normal
 
   doc_block_done:
     id: doc_block_done
     character: NAV
-    message: "Doc block is wired up. <highlight>The advantage of this pattern: one description, used anywhere.</highlight> If cargo_type shows up in three different marts, all three can reference the same doc block and they stay in sync forever. Finish out the mart description and we're done."
+    message: "Doc block is wired up. <highlight>Here's why the pattern pays off: you write the description once and use it anywhere.</highlight> If cargo_type turns up in three different marts, all three can point at the same doc block and they never drift out of sync. Finish the mart description and we're done."
     priority: normal
 
   docs_site_explain:
     id: docs_site_explain
     character: DR. MATSURI
-    message: "I'll be honest, the part of dbt I use most isn't the SQL — it's <highlight>dbt docs generate</highlight>. It compiles all of this into a browsable site with the DAG, every column with its description, every test, every freshness contract. When a new analyst asks me what a column means, I send them the docs URL. <highlight>That's the win.</highlight>"
+    message: "Honestly? The part of dbt I lean on most isn't the SQL, it's <highlight>dbt docs generate</highlight>. It compiles all of this into a browsable site: the DAG, every column with its description, every test, every freshness contract. When a new analyst asks me what a column means, I just send them the docs URL and get back to work."
     priority: normal
 
   level_complete:
     id: level_complete
     character: NAV
-    message: "Models, columns, doc blocks — every piece of this warehouse can now explain itself. <highlight>That's the Documentation lesson.</highlight> Three levels left before this thing is fully in production: shipping the code (commit, PR, merge), configuring the deployment environment, then wiring up a scheduled job. Holt wants the scheduled refresh up before next cycle."
+    message: "Models, columns, doc blocks: every piece of this warehouse can explain itself now. So much for <highlight>documentation</highlight>. Three levels left before this thing is truly in production: shipping the code (commit, PR, merge), setting up the deployment environment, then wiring up a scheduled job. And Holt wants that scheduled refresh running before next cycle."
     priority: high
+
+quiz:
+  - question: "What does `{% docs cargo_type %} ... {% enddocs %}` define?"
+    options:
+      - "A reusable doc block you can reference from YAML with `{{ doc('cargo_type') }}`"
+      - "A SQL macro"
+      - "A column-level test"
+      - "A snapshot strategy"
+    correct: 0
+    explanation: "Doc blocks live in .md files alongside your models. You write a longer description once and reference it from any model or column that needs it."
+  - question: "Why use `{{ doc('cargo_type') }}` in YAML instead of typing the description inline?"
+    options:
+      - "It's the only way descriptions show up in the docs site"
+      - "You can reuse the same description across many columns and update it in one place"
+      - "Inline descriptions don't support more than 80 characters"
+      - "It's faster to compile"
+    correct: 1
+    explanation: "It's about reuse and a single source of truth. If `cargo_type` shows up in five models, you describe it once and reference it five times, and editing the doc block updates every one of them."

@@ -258,6 +258,24 @@ async def get_levels():
     return levels
 
 
+# ── Quiz ─────────────────────────────────────────────────────────────────────
+
+@app.get("/api/quiz/{level_id}")
+async def get_quiz(level_id: int):
+    """Return the quiz questions for a level (empty list if none defined).
+    Used by the frontend to show a short check-for-understanding between
+    levels — non-blocking, never gates progression."""
+    try:
+        level = load_level(level_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return {
+        "levelId": level.id,
+        "levelTitle": level.title,
+        "questions": [q.model_dump() for q in level.quiz],
+    }
+
+
 # ── Hints ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/hints/{objective_id}")
